@@ -281,6 +281,9 @@ Instructions:
     noAction: NoActionItem[];
   };
 
+  // Assign sequential IDs (don't rely on Claude including them)
+  result.actions.forEach((action, i) => { action.id = i + 1; });
+
   // Reattach contact metadata, conversation history, and notes from enriched data
   for (const action of result.actions) {
     const lead = leads.find((l) => l.contactId === action.contactId);
