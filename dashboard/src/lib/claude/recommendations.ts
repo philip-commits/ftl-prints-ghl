@@ -3,7 +3,9 @@ import type { EnrichedLead, ActionItem, NoActionItem } from "../ghl/types";
 
 const client = new Anthropic();
 
-const SYSTEM_PROMPT = `You are the daily operations assistant for Fort Lauderdale Screen Printing (FTL Prints). You generate a prioritized action list for Philip Munroe, the founder, every morning.
+const MAX_CONCURRENT = 5;
+
+const SYSTEM_PROMPT = `You are the daily operations assistant for Fort Lauderdale Screen Printing (FTL Prints). You analyze a single lead and generate an action recommendation for Philip Munroe, the founder.
 
 ## ABOUT FTL PRINTS
 
@@ -17,7 +19,7 @@ To quote a job, Philip needs: artwork/design, quantity, sizes (or size breakdown
 
 ## WHAT YOU RECEIVE
 
-For each lead you'll receive enriched pipeline data:
+You'll receive enriched pipeline data for ONE lead:
 - **Contact info**: name, email, phone, international flag
 - **Opportunity data**: stage, days created, days in current stage, monetary value, source
 - **Project details**: service type, budget tier, quantity, sizes, artwork status, what's missing
@@ -38,7 +40,7 @@ The system runs simple checks BEFORE you see the lead:
 
 When suggestedAction="none" with a cooldown hint, it means the lead was just contacted. Respect this unless conversation context demands immediate action (e.g., they replied and need a response).
 
-## YOUR JOB — INTELLIGENT RECOMMENDATIONS
+## YOUR JOB — INTELLIGENT RECOMMENDATION
 
 You add intelligence by reading the actual conversation, notes, and all context data:
 
@@ -135,16 +137,45 @@ Before generating an action, verify the lead is in the correct stage based on co
 
 ## OUTPUT FORMAT
 
-For each action item, output:
-- actionType: reply | outreach | call | follow_up | move | none
-- priority: high | medium | info
+Return a JSON object with EITHER an "action" key OR a "noAction" key.
+
+### If action needed:
+\`\`\`json
+{
+  "action": {
+    "actionType": "reply | outreach | call | follow_up | move",
+    "priority": "high | medium | info",
+    "label": "Short, specific description",
+    "context": "~250 chars grounded in conversation",
+    "recommendation": "~150 chars — specific next step for Philip"
+  }
+}
+\`\`\`
+
+### If no action needed:
+\`\`\`json
+{
+  "noAction": {
+    "reason": "Clear, specific reason"
+  }
+}
+\`\`\`
+
+### Field details:
+- actionType: reply | outreach | call | follow_up | move
+- priority: high | medium | info (see Priority Rules below)
 - label: Short, specific description (e.g., "Reply to sizing question" not "Follow up with lead")
 - context: ~250 chars grounded in conversation. Reference specific prices, products, quantities, what was discussed, what the customer last said. NEVER generic filler.
 - recommendation: ~150 chars — specific next step for Philip. Tell him exactly what to do and why.
 
+### Priority Rules:
+- **high**: Needs reply (unread inbound message), first outreach (new lead), urgent timeline ("need by Friday", "event next week"), buying signals ("let's do it", "sounds good"), invoice payment follow-up
+- **medium**: Routine follow-ups with no urgency, waiting on info from customer, standard cadence follow-ups where customer hasn't responded but there's no time pressure
+- **info**: Stage move recommendations, lead going cold (recommend Cooled Off), no contact info available, lead may be unqualified
+
 ### Multi-channel drafts:
 
-When multiple channels are recommended (e.g., "text + email" for first outreach, or "text + call + email" for follow-ups), include ALL relevant fields on the SAME action item. Philip can send each one separately from the dashboard.
+When multiple channels are recommended (e.g., "text + email" for first outreach, or "text + call + email" for follow-ups), include ALL relevant fields on the SAME action.
 
 **Email fields** (include when email is part of the action):
 - subject: Clear, specific subject line
@@ -181,9 +212,7 @@ When multiple channels are recommended (e.g., "text + email" for first outreach,
 - NEVER draft a message without referencing a specific conversation detail (if conversation exists)
 - NEVER suggest contacting someone who was already contacted today with no response yet
 - NEVER suggest SMS or call for international contacts
-- Every lead MUST appear in either "actions" or "noAction" — no lead should be missing
 - noAction items need a clear, specific reason (not just "no action needed")
-- Action IDs must be sequential starting at 1
 
 ## STAGE IDs (for move actions)
 
@@ -193,22 +222,16 @@ When multiple channels are recommended (e.g., "text + email" for first outreach,
 - Cooled Off: 7ec748b8-920d-4bdb-bf09-74dd22d27846
 - Unqualified: b909061c-9141-45d7-b1e2-fd37432c3596
 
-Output valid JSON:
-{
-  "actions": [ActionItem...],
-  "noAction": [NoActionItem...]
-}`;
+Output valid JSON only.`;
 
-export async function generateRecommendations(
-  leads: EnrichedLead[],
+async function generateForLead(
+  lead: EnrichedLead,
   inactiveSummary: Record<string, number>,
-): Promise<{ actions: ActionItem[]; noAction: NoActionItem[] }> {
-  const leadsData = leads.map((lead) => ({
-    contactId: lead.contactId,
+): Promise<{ action?: Partial<ActionItem>; noAction?: Partial<NoActionItem> }> {
+  const leadData = {
     contactName: lead.name,
     contactEmail: lead.email,
     contactPhone: lead.phone,
-    opportunityId: lead.id,
     stage: lead.stage,
     monetaryValue: lead.monetaryValue,
     source: lead.source,
@@ -236,31 +259,22 @@ export async function generateRecommendations(
     hint: lead.hint,
     conversationHistory: lead.conversationHistory,
     notes: lead.notes,
-  }));
+  };
 
   const message = await client.messages.create({
     model: "claude-sonnet-4-20250514",
-    max_tokens: 16384,
+    max_tokens: 4096,
     system: SYSTEM_PROMPT,
     messages: [
       {
         role: "user",
-        content: `Today's pipeline: ${leads.length} active leads. Generate action items for each.
-
-Pipeline summary (inactive stages, for context only):
+        content: `Pipeline summary (inactive stages, for context only):
 ${JSON.stringify(inactiveSummary)}
 
-Active leads:
-${JSON.stringify(leadsData, null, 2)}
+Analyze this lead and generate a recommendation:
+${JSON.stringify(leadData, null, 2)}
 
-Instructions:
-1. Analyze each lead's conversation history, notes, stage, timing, and engagement data
-2. Accept or override the automated suggestedAction based on conversation context
-3. Draft ready-to-send messages grounded in specific conversation details
-4. Return valid JSON with "actions" and "noAction" arrays
-5. Action IDs must be sequential starting at 1
-6. For each action, only include contactId as the identifier — do NOT include contactName, contactEmail, contactPhone, opportunityId, stage, conversationHistory, or notes. Those fields will be attached automatically.
-7. Every lead must appear in either actions or noAction — verify none are missing`,
+Return JSON with either {"action": {...}} or {"noAction": {...}}`,
       },
     ],
   });
@@ -270,24 +284,58 @@ Instructions:
     .map((b) => b.text)
     .join("");
 
-  // Extract JSON from response (may be wrapped in markdown code blocks)
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
-    throw new Error("Claude response did not contain valid JSON");
+    console.warn(`[recommendations] No JSON in response for ${lead.name}, treating as noAction`);
+    return { noAction: { reason: "Failed to generate recommendation" } };
   }
 
-  const result = JSON.parse(jsonMatch[0]) as {
-    actions: ActionItem[];
-    noAction: NoActionItem[];
-  };
+  return JSON.parse(jsonMatch[0]);
+}
 
-  // Assign sequential IDs (don't rely on Claude including them)
-  result.actions.forEach((action, i) => { action.id = i + 1; });
+export async function generateRecommendations(
+  leads: EnrichedLead[],
+  inactiveSummary: Record<string, number>,
+): Promise<{ actions: ActionItem[]; noAction: NoActionItem[] }> {
+  const actions: ActionItem[] = [];
+  const noAction: NoActionItem[] = [];
 
-  // Reattach contact metadata, conversation history, and notes from enriched data
-  for (const action of result.actions) {
-    const lead = leads.find((l) => l.contactId === action.contactId);
-    if (lead) {
+  // Process leads with concurrency limit
+  let running = 0;
+  const queue = [...leads];
+  const results: Array<{ lead: EnrichedLead; result: { action?: Partial<ActionItem>; noAction?: Partial<NoActionItem> } }> = [];
+
+  async function processNext(): Promise<void> {
+    while (queue.length > 0) {
+      const lead = queue.shift()!;
+      console.log(`[recommendations] Analyzing ${lead.name} (${lead.stage})...`);
+      try {
+        const result = await generateForLead(lead, inactiveSummary);
+        results.push({ lead, result });
+      } catch (err) {
+        console.warn(`[recommendations] Error for ${lead.name}:`, err);
+        results.push({
+          lead,
+          result: { noAction: { reason: "Error generating recommendation" } },
+        });
+      }
+    }
+  }
+
+  // Launch concurrent workers
+  const workers: Promise<void>[] = [];
+  for (let i = 0; i < Math.min(MAX_CONCURRENT, leads.length); i++) {
+    workers.push(processNext());
+  }
+  await Promise.all(workers);
+
+  // Assemble results — assign sequential IDs and attach lead metadata
+  let id = 1;
+  for (const { lead, result } of results) {
+    if (result.action) {
+      const action = result.action as ActionItem;
+      action.id = id++;
+      action.contactId = lead.contactId;
       action.contactName = lead.name;
       action.contactEmail = lead.email;
       action.contactPhone = lead.phone;
@@ -296,8 +344,14 @@ Instructions:
       action.conversationHistory = lead.conversationHistory;
       action.notes = lead.notes;
       action.international = lead.isInternational;
+      actions.push(action);
+    } else if (result.noAction) {
+      const item = result.noAction as NoActionItem;
+      item.contactName = lead.name;
+      item.stage = lead.stage;
+      noAction.push(item);
     }
   }
 
-  return result;
+  return { actions, noAction };
 }
