@@ -14,7 +14,11 @@ const PIPELINE_STAGES = [
 ];
 
 const STAGE_NAME_TO_ID: Record<string, string> = {};
-for (const s of PIPELINE_STAGES) STAGE_NAME_TO_ID[s.name] = s.id;
+const STAGE_ID_TO_NAME: Record<string, string> = {};
+for (const s of PIPELINE_STAGES) {
+  STAGE_NAME_TO_ID[s.name] = s.id;
+  STAGE_ID_TO_NAME[s.id] = s.name;
+}
 
 function fmtPhone(p: string): string {
   if (!p) return "";
@@ -58,6 +62,7 @@ const styles = {
   loading: { textAlign: "center" as const, padding: "60px 0", color: "#94a3b8", fontSize: "1.1rem" } as React.CSSProperties,
   iconBtn: { background: "none", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", cursor: "pointer", padding: "5px 7px", lineHeight: 1, display: "inline-flex", alignItems: "center", transition: "all 0.15s" } as React.CSSProperties,
   dismissBtn: { background: "none", border: "none", color: "#94a3b8", fontSize: "1.2rem", cursor: "pointer", padding: "2px 6px", lineHeight: 1, opacity: 0.4 } as React.CSSProperties,
+  checkBadge: { position: "absolute", bottom: -4, right: -4, background: "#16a34a", color: "#fff", fontSize: "0.55rem", fontWeight: 700, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", lineHeight: 1 } as React.CSSProperties,
 };
 
 const BADGE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -99,6 +104,11 @@ const MoveIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M5 12h14" />
     <path d="m12 5 7 7-7 7" />
+  </svg>
+);
+const PhoneIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
   </svg>
 );
 
@@ -169,11 +179,13 @@ function ComposeArea({
   sentStatus,
   onSent,
   openPanel,
+  onStageMove,
 }: {
   action: ActionItem;
   sentStatus: SentStatus;
   onSent: (key: string, status: string) => void;
   openPanel: string | null;
+  onStageMove?: (newStage: string) => void;
 }) {
   const [emailSubject, setEmailSubject] = useState(
     action.subject || action.noAnswerSubject || "",
@@ -213,6 +225,9 @@ function ComposeArea({
       });
       const d = await r.json();
       onSent(key, d.success ? "sent" : "failed");
+      if (d.success && action.stage === "New Lead" && onStageMove) {
+        onStageMove("In Progress");
+      }
     } catch {
       onSent(key, "failed");
     }
@@ -229,6 +244,9 @@ function ComposeArea({
       });
       const d = await r.json();
       onSent(key, d.success ? "sent" : "failed");
+      if (d.success && action.stage === "New Lead" && onStageMove) {
+        onStageMove("In Progress");
+      }
     } catch {
       onSent(key, "failed");
     }
@@ -261,6 +279,9 @@ function ComposeArea({
       });
       const d = await r.json();
       onSent(key, d.success ? "moved" : "failed");
+      if (d.success && onStageMove) {
+        onStageMove(STAGE_ID_TO_NAME[moveStageId] || action.stage);
+      }
     } catch {
       onSent(key, "failed");
     }
@@ -483,7 +504,7 @@ function PriorNotes({ notes }: { notes: ActionItem["notes"] }) {
                     })
                   : ""}
               </div>
-              <div style={{ color: "#f1f5f9" }}>{n.body}</div>
+              <div style={{ color: "#f1f5f9" }}>{n.body.replace(/<[^>]*>/g, "")}</div>
             </div>
           ))}
         </div>
@@ -492,214 +513,7 @@ function PriorNotes({ notes }: { notes: ActionItem["notes"] }) {
   );
 }
 
-// --- Call Card ---
-function CallCard({
-  action,
-  sentStatus,
-  onSent,
-  onDismiss,
-}: {
-  action: ActionItem;
-  sentStatus: SentStatus;
-  onSent: (key: string, status: string) => void;
-  onDismiss: () => void;
-}) {
-  const [openPanel, setOpenPanel] = useState<string | null>(null);
-  const [callState, setCallState] = useState<"initial" | "result" | "answered" | "noanswer">("initial");
-  const [noteText, setNoteText] = useState("");
-  const [noAnswerSms, setNoAnswerSms] = useState(action.noAnswerSms || "");
-  const [noAnswerSubject, setNoAnswerSubject] = useState(action.noAnswerSubject || "");
-  const [noAnswerEmail, setNoAnswerEmail] = useState(action.noAnswerEmail || "");
-
-  const togglePanel = (panel: string) => {
-    setOpenPanel(openPanel === panel ? null : panel);
-  };
-
-  const badgeColor = BADGE_COLORS[action.stage] || { bg: "#334155", color: "#94a3b8" };
-
-  const getStatus = (key: string): "ready" | "sending" | "sent" | "failed" => {
-    const s = sentStatus[key];
-    if (!s) return "ready";
-    return s.status === "sent" || s.status === "noted" || s.status === "moved"
-      ? "sent"
-      : (s.status as "ready" | "sending" | "sent" | "failed");
-  };
-
-  async function saveCallNote() {
-    const key = String(action.id);
-    onSent(key + "_callnote", "sending");
-    try {
-      const r = await fetch(`/api/note/${action.id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: noteText }),
-      });
-      const d = await r.json();
-      onSent(key + "_callnote", d.success ? "noted" : "failed");
-    } catch {
-      onSent(key + "_callnote", "failed");
-    }
-  }
-
-  async function sendNoAnswerSms() {
-    const key = `${action.id}_sms`;
-    onSent(key, "sending");
-    try {
-      const r = await fetch(`/api/send/${action.id}_sms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "SMS", message: noAnswerSms }),
-      });
-      const d = await r.json();
-      onSent(key, d.success ? "sent" : "failed");
-    } catch {
-      onSent(key, "failed");
-    }
-  }
-
-  async function sendNoAnswerEmail() {
-    const key = `${action.id}_email`;
-    onSent(key, "sending");
-    try {
-      const r = await fetch(`/api/send/${action.id}_email`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "Email",
-          subject: noAnswerSubject,
-          message: noAnswerEmail,
-          html: textToHtml(noAnswerEmail),
-        }),
-      });
-      const d = await r.json();
-      onSent(key, d.success ? "sent" : "failed");
-    } catch {
-      onSent(key, "failed");
-    }
-  }
-
-  function handleNoAnswer() {
-    setCallState("noanswer");
-    // Auto-log no answer note
-    const today = new Date().toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-    fetch(`/api/note/${action.id}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: `Called — no answer (${today})` }),
-    }).catch(() => {});
-  }
-
-  const company = action.contactCompany ? ` — ${action.contactCompany}` : "";
-
-  return (
-    <div style={styles.card} data-priority={action.priority}>
-      <div style={styles.cardTop}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          <span style={{ ...styles.badge, background: badgeColor.bg, color: badgeColor.color }}>
-            {action.stage}
-          </span>
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={styles.iconBtn} onClick={() => togglePanel("email")} title="Send email"><EmailIcon /></button>
-          <button style={{ ...styles.iconBtn, ...(action.contactPhone ? {} : { opacity: 0.25, pointerEvents: "none" }) }} onClick={() => togglePanel("sms")} title="Send text"><SmsIcon /></button>
-          <button style={styles.iconBtn} onClick={() => togglePanel("note")} title="Add note"><NoteIcon /></button>
-          <button style={styles.iconBtn} onClick={() => togglePanel("move")} title="Move stage"><MoveIcon /></button>
-          <button style={styles.dismissBtn} onClick={onDismiss} title="Dismiss">&times;</button>
-        </div>
-      </div>
-      <div style={styles.contactName}>
-        {action.contactName}{company}
-        {action.contactPhone && (
-          <>
-            {" — "}
-            <a href={`tel:${action.contactPhone}`} style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 400, fontSize: "0.9rem" }}>
-              {fmtPhone(action.contactPhone)}
-            </a>
-          </>
-        )}
-      </div>
-      <div style={styles.context}><strong>Summary:</strong> {action.context}</div>
-      {action.recommendation && (
-        <div style={styles.context}><strong>Recommendation:</strong> {action.recommendation}</div>
-      )}
-
-      {callState === "initial" && (
-        <SendButton label="I Called" sentLabel="" status="ready" onClick={() => setCallState("result")} />
-      )}
-      {callState === "result" && (
-        <div style={{ display: "flex", gap: 8 }}>
-          <SendButton label="Answered" sentLabel="" status="ready" onClick={() => setCallState("answered")} />
-          <SendButton label="No Answer" sentLabel="" status="ready" onClick={handleNoAnswer} />
-        </div>
-      )}
-      {callState === "answered" && (
-        <div style={{ marginTop: 8 }}>
-          <textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            rows={3}
-            placeholder="Add a note about the call..."
-            style={styles.textarea}
-          />
-          <div style={{ marginTop: 8 }}>
-            <SendButton
-              label="Save Note"
-              sentLabel="Saved ✓"
-              status={getStatus(`${action.id}_callnote`)}
-              onClick={saveCallNote}
-            />
-          </div>
-        </div>
-      )}
-      {callState === "noanswer" && (
-        <div style={{ marginTop: 8 }}>
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: 4 }}>SMS</div>
-            <textarea
-              value={noAnswerSms}
-              onChange={(e) => setNoAnswerSms(e.target.value)}
-              rows={2}
-              style={styles.textarea}
-            />
-            <div style={{ marginTop: 6 }}>
-              <SendButton label="Send SMS" sentLabel="Sent ✓" status={getStatus(`${action.id}_sms`)} onClick={sendNoAnswerSms} />
-            </div>
-          </div>
-          <div>
-            <div style={{ fontSize: "0.8rem", color: "#94a3b8", marginBottom: 4 }}>Email</div>
-            <input
-              value={noAnswerSubject}
-              onChange={(e) => setNoAnswerSubject(e.target.value)}
-              style={styles.input}
-            />
-            <textarea
-              value={noAnswerEmail}
-              onChange={(e) => setNoAnswerEmail(e.target.value)}
-              rows={4}
-              style={styles.textarea}
-            />
-            <div style={{ marginTop: 6 }}>
-              <SendButton label="Send Email" sentLabel="Sent ✓" status={getStatus(`${action.id}_email`)} onClick={sendNoAnswerEmail} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ComposeArea action={action} sentStatus={sentStatus} onSent={onSent} openPanel={openPanel} />
-
-      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
-        <ConvoHistory messages={action.conversationHistory} />
-        <PriorNotes notes={action.notes} />
-      </div>
-    </div>
-  );
-}
-
-// --- Generic Action Card (Email/SMS/Move) ---
+// --- Generic Action Card ---
 function ActionCard({
   action,
   sentStatus,
@@ -712,18 +526,15 @@ function ActionCard({
   onDismiss: () => void;
 }) {
   const [openPanel, setOpenPanel] = useState<string | null>(null);
-
-  if (action.actionType === "call" && action.messageType === "Call") {
-    return <CallCard action={action} sentStatus={sentStatus} onSent={onSent} onDismiss={onDismiss} />;
-  }
+  const [callState, setCallState] = useState<"idle" | "picked" | "noanswer">("idle");
+  const [displayStage, setDisplayStage] = useState(action.stage);
 
   const togglePanel = (panel: string) => {
     setOpenPanel(openPanel === panel ? null : panel);
   };
 
-  const badgeColor = BADGE_COLORS[action.stage] || { bg: "#334155", color: "#94a3b8" };
+  const badgeColor = BADGE_COLORS[displayStage] || { bg: "#334155", color: "#94a3b8" };
   const company = action.contactCompany ? ` — ${action.contactCompany}` : "";
-  const isMove = action.actionType === "move";
 
   const getStatus = (key: string): "ready" | "sending" | "sent" | "failed" => {
     const s = sentStatus[key];
@@ -733,16 +544,31 @@ function ActionCard({
       : (s.status as "ready" | "sending" | "sent" | "failed");
   };
 
-  async function handleMoveClick() {
-    const key = String(action.id);
-    onSent(key, "sending");
-    try {
-      const r = await fetch(`/api/move/${action.id}`, { method: "POST" });
-      const d = await r.json();
-      onSent(key, d.success ? "moved" : "failed");
-    } catch {
-      onSent(key, "failed");
-    }
+  const emailSent = getStatus(String(action.id)) === "sent";
+  const smsSent = getStatus(`${action.id}_sms`) === "sent";
+  const callLogged = callState === "picked" || callState === "noanswer";
+  const noteSent = getStatus(`${action.id}_note`) === "sent";
+  const moveSent = getStatus(`${action.id}_move`) === "sent";
+
+  function handleCallClick() {
+    if (callState !== "idle") return;
+    setOpenPanel(openPanel === "call" ? null : "call");
+  }
+
+  function handleAnswered() {
+    setCallState("picked");
+    setOpenPanel("note");
+  }
+
+  function handleNoAnswer() {
+    setCallState("noanswer");
+    setOpenPanel(null);
+    const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    fetch(`/api/note/${action.id}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ body: `Called — no answer (${today})` }),
+    }).catch(() => {});
   }
 
   return (
@@ -752,47 +578,58 @@ function ActionCard({
           <span
             style={{
               ...styles.badge,
-              background: isMove ? "#1e1b4b" : badgeColor.bg,
-              color: isMove ? "#818cf8" : badgeColor.color,
+              background: badgeColor.bg,
+              color: badgeColor.color,
             }}
           >
-            {action.stage}
+            {displayStage}
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <button style={styles.iconBtn} onClick={() => togglePanel("email")} title="Send email"><EmailIcon /></button>
-          <button style={{ ...styles.iconBtn, ...(action.contactPhone ? {} : { opacity: 0.25, pointerEvents: "none" as const }) }} onClick={() => togglePanel("sms")} title="Send text"><SmsIcon /></button>
-          <button style={styles.iconBtn} onClick={() => togglePanel("note")} title="Add note"><NoteIcon /></button>
-          <button style={styles.iconBtn} onClick={() => togglePanel("move")} title="Move stage"><MoveIcon /></button>
-          {isMove && (
-            <SendButton
-              label="Move to Cooled Off"
-              sentLabel="Moved ✓"
-              status={getStatus(String(action.id))}
-              onClick={handleMoveClick}
-              variant="move"
-            />
-          )}
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={styles.iconBtn} onClick={() => togglePanel("email")} title="Send email"><EmailIcon /></button>
+            {emailSent && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={{ ...styles.iconBtn, ...(action.contactPhone ? {} : { opacity: 0.25, pointerEvents: "none" as const }) }} onClick={() => togglePanel("sms")} title="Send text"><SmsIcon /></button>
+            {smsSent && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={{ ...styles.iconBtn, ...(action.contactPhone ? {} : { opacity: 0.25, pointerEvents: "none" as const }) }} onClick={handleCallClick} title="Log call"><PhoneIcon /></button>
+            {callLogged && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={styles.iconBtn} onClick={() => togglePanel("note")} title="Add note"><NoteIcon /></button>
+            {noteSent && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={styles.iconBtn} onClick={() => togglePanel("move")} title="Move stage"><MoveIcon /></button>
+            {moveSent && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
           <button style={styles.dismissBtn} onClick={onDismiss} title="Dismiss">&times;</button>
         </div>
       </div>
       <div style={styles.contactName}>
         {action.contactName}{company}
-        {action.contactPhone && (
-          <>
-            {" — "}
-            <a href={`tel:${action.contactPhone}`} style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 400, fontSize: "0.9rem" }}>
-              {fmtPhone(action.contactPhone)}
-            </a>
-          </>
-        )}
       </div>
       <div style={styles.context}><strong>Summary:</strong> {action.context}</div>
       {action.recommendation && (
         <div style={styles.context}><strong>Recommendation:</strong> {action.recommendation}</div>
       )}
 
-      <ComposeArea action={action} sentStatus={sentStatus} onSent={onSent} openPanel={openPanel} />
+      {openPanel === "call" && callState === "idle" && (
+        <div style={{ ...styles.composeArea, display: "flex", gap: 8, alignItems: "center" }}>
+          {action.contactPhone && (
+            <a href={`tel:${action.contactPhone}`} style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 500, fontSize: "0.9rem", marginRight: 8 }}>
+              {fmtPhone(action.contactPhone)}
+            </a>
+          )}
+          <SendButton label="Answered" sentLabel="" status="ready" onClick={handleAnswered} />
+          <SendButton label="No Answer" sentLabel="" status="ready" onClick={handleNoAnswer} />
+        </div>
+      )}
+
+      <ComposeArea action={action} sentStatus={sentStatus} onSent={onSent} openPanel={openPanel} onStageMove={setDisplayStage} />
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
         <ConvoHistory messages={action.conversationHistory} />
