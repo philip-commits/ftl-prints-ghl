@@ -3,7 +3,9 @@ import type { EnrichedLead, ActionItem, NoActionItem } from "../ghl/types";
 
 const client = new Anthropic();
 
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = 2;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY_MS = 30_000; // 30s base delay for rate limits
 
 const SYSTEM_PROMPT = `You are the daily operations assistant for Fort Lauderdale Screen Printing (FTL Prints). You analyze a single lead and generate an action recommendation for Philip Munroe, the founder.
 
@@ -59,7 +61,7 @@ You add intelligence by reading the actual conversation, notes, and all context 
 - Customer asked a specific question that hasn't been answered → reply (high)
 - Notes indicate a specific follow-up date that hasn't arrived yet → noAction until that date
 - Conversation shows this is an existing/repeat customer → warmer tone, reference past orders
-- Customer expressed urgency ("need by Friday", "event next week") → escalate priority
+- Customer expressed urgency ("need by Friday", "event next week", tight deadline) → escalate to high priority AND add a call to the recommendation (text + email + call), even for New Leads. Urgency overrides the default "text + email only" for first outreach.
 - Lead has no email AND no phone → noAction (no way to contact)
 - Lead's conversation shows they already placed an order or paid → move to Sale
 
@@ -68,6 +70,7 @@ You add intelligence by reading the actual conversation, notes, and all context 
 ### New Lead
 - Goal: Make first contact, learn about their project
 - **First outreach: Text + Email** — always both channels
+- **If the lead mentions urgency** (tight deadline, "need by Friday", event date soon, etc.) → add a call on top of text + email. Include noAnswerSms + noAnswerSubject + noAnswerEmail fields.
 - Tone: Welcoming, excited to help, professional but friendly
 - Acknowledge any details they submitted on the form (project details, quantity, sizes, artwork)
 - Ask what they're looking for, timeline, and if they have artwork ready
@@ -213,6 +216,8 @@ When multiple channels are recommended (e.g., "text + email" for first outreach,
 - NEVER suggest contacting someone who was already contacted today with no response yet
 - NEVER suggest SMS or call for international contacts
 - noAction items need a clear, specific reason (not just "no action needed")
+- EVERY action (except actionType "move") MUST include pre-written drafts for ALL recommended channels. For domestic contacts, ALWAYS include BOTH email (subject + message) AND SMS (smsMessage). For international contacts, ALWAYS include email (subject + message). Never return an action with empty or missing draft fields — Philip needs ready-to-send messages.
+- Use today's date (provided in the user message) for all time-based reasoning. Do NOT guess or infer the current date from conversation timestamps.
 
 ## STAGE IDs (for move actions)
 
@@ -261,6 +266,13 @@ async function generateForLead(
     notes: lead.notes,
   };
 
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   const message = await client.messages.create({
     model: "claude-sonnet-4-20250514",
     max_tokens: 4096,
@@ -268,7 +280,9 @@ async function generateForLead(
     messages: [
       {
         role: "user",
-        content: `Pipeline summary (inactive stages, for context only):
+        content: `Today's date: ${today}
+
+Pipeline summary (inactive stages, for context only):
 ${JSON.stringify(inactiveSummary)}
 
 Analyze this lead and generate a recommendation:
@@ -309,11 +323,27 @@ export async function generateRecommendations(
     while (queue.length > 0) {
       const lead = queue.shift()!;
       console.log(`[recommendations] Analyzing ${lead.name} (${lead.stage})...`);
-      try {
-        const result = await generateForLead(lead, inactiveSummary);
-        results.push({ lead, result });
-      } catch (err) {
-        console.warn(`[recommendations] Error for ${lead.name}:`, err);
+      let lastErr: unknown;
+      for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          const result = await generateForLead(lead, inactiveSummary);
+          results.push({ lead, result });
+          lastErr = null;
+          break;
+        } catch (err) {
+          lastErr = err;
+          const isRateLimit = err instanceof Error && (err.message.includes("429") || err.message.includes("rate_limit"));
+          if (isRateLimit && attempt < MAX_RETRIES) {
+            const delay = RETRY_BASE_DELAY_MS * (attempt + 1);
+            console.warn(`[recommendations] Rate limited for ${lead.name}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+            await new Promise((r) => setTimeout(r, delay));
+          } else {
+            break;
+          }
+        }
+      }
+      if (lastErr) {
+        console.warn(`[recommendations] Error for ${lead.name}:`, lastErr);
         results.push({
           lead,
           result: { noAction: { reason: "Error generating recommendation" } },

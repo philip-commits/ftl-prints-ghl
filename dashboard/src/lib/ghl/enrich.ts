@@ -184,15 +184,15 @@ function decideAction(lead: EnrichedLead): ActionResult {
     if (bdays >= 8 && outboundCount >= 3)
       return ["move", "info", `${bdays} bdays, ${outboundCount} attempts, no response — recommend Cooled Off`];
     if (bdays >= 5)
-      return ["follow_up", "high", `${bdays} bdays no response, ${outboundCount} attempts — text + call + email`];
+      return ["follow_up", "medium", `${bdays} bdays no response, ${outboundCount} attempts — text + call + email`];
     if (bdays >= 2)
-      return ["follow_up", "high", `${bdays} bdays no response — text + call + email`];
+      return ["follow_up", "medium", `${bdays} bdays no response — text + call + email`];
     return ["none", "none", "Contacted recently, waiting for response"];
   }
 
   // 4. Quote Sent / Invoice Sent — Claude decides based on conversation context
   if (stage === "Quote Sent" || stage === "Invoice Sent") {
-    return ["follow_up", "high", `${stage} — ${bdays} bdays since last contact, ${outboundCount} outbound messages. Claude to decide action based on conversation context.`];
+    return ["follow_up", "medium", `${stage} — ${bdays} bdays since last contact, ${outboundCount} outbound messages. Claude to decide action and priority based on conversation context.`];
   }
 
   // 5. Default — active stage, needs follow-up

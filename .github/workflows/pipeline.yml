@@ -1,7 +1,7 @@
 name: Daily Pipeline
 on:
   schedule:
-    - cron: '0 13 * * 1-5' # 8 AM ET (UTC-5), weekdays only
+    - cron: '0 12 * * 1-5' # 7 AM ET (UTC-5), weekdays only
   workflow_dispatch: {} # manual trigger button in GitHub UI
 
 jobs:
