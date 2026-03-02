@@ -752,6 +752,22 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       .catch(() => {});
   }, []);
 
+  // Poll for new dashboard data every 2 minutes
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const r = await fetch("/api/actions");
+        const fresh = await r.json();
+        if (fresh.generatedAt && fresh.generatedAt !== data?.generatedAt) {
+          setData(fresh);
+          setDismissed(new Set());
+          setSentStatus({});
+        }
+      } catch { /* ignore */ }
+    }, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [data?.generatedAt]);
+
   const handleSent = useCallback((key: string, status: string) => {
     setSentStatus((prev) => ({ ...prev, [key]: { status, ts: Date.now() } }));
   }, []);
