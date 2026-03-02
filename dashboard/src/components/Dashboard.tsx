@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { DashboardData, ActionItem, SentStatus } from "@/lib/ghl/types";
 
 const PIPELINE_STAGES = [
@@ -44,7 +44,7 @@ const styles = {
   dateLine: { color: "#94a3b8", fontSize: "0.9rem", marginBottom: 24 } as React.CSSProperties,
   statsBar: { display: "flex", gap: 12, marginBottom: 32, flexWrap: "wrap" as const } as React.CSSProperties,
   statPill: { background: "#1e293b", border: "1px solid #334155", borderRadius: 20, padding: "8px 16px", fontSize: "0.85rem" } as React.CSSProperties,
-  card: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "16px 20px", marginBottom: 12, transition: "opacity 0.3s" } as React.CSSProperties,
+  card: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "16px 20px", marginBottom: 12, transition: "opacity 0.3s", scrollMarginTop: 20 } as React.CSSProperties,
   cardTop: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 } as React.CSSProperties,
   badge: { display: "inline-block", padding: "2px 8px", borderRadius: 4, fontSize: "0.7rem", fontWeight: 600, textTransform: "uppercase" as const } as React.CSSProperties,
   contactName: { fontWeight: 600, fontSize: "1rem" } as React.CSSProperties,
@@ -54,7 +54,7 @@ const styles = {
   composeArea: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "12px 16px", marginTop: 10 } as React.CSSProperties,
   composeHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } as React.CSSProperties,
   composeLabel: { fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.04em" } as React.CSSProperties,
-  section: { background: "#1e293b", borderRadius: 10, border: "1px solid #334155", marginBottom: 20, overflow: "hidden" } as React.CSSProperties,
+  section: { background: "#1e293b", borderRadius: 10, border: "1px solid #334155", marginBottom: 20, overflow: "hidden", scrollMarginTop: 20 } as React.CSSProperties,
   sectionHeader: { padding: "16px 20px", fontWeight: 600, fontSize: "0.95rem", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", userSelect: "none" as const, color: "#94a3b8" } as React.CSSProperties,
   priorityLabel: { fontSize: "0.8rem", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.08em", marginBottom: 12 } as React.CSSProperties,
   noActionItem: { padding: "6px 0", fontSize: "0.85rem", color: "#94a3b8", borderBottom: "1px solid #334155" } as React.CSSProperties,
@@ -63,6 +63,10 @@ const styles = {
   iconBtn: { background: "none", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", cursor: "pointer", padding: "5px 7px", lineHeight: 1, display: "inline-flex", alignItems: "center", transition: "all 0.15s" } as React.CSSProperties,
   dismissBtn: { background: "none", border: "none", color: "#94a3b8", fontSize: "1.2rem", cursor: "pointer", padding: "2px 6px", lineHeight: 1, opacity: 0.4 } as React.CSSProperties,
   checkBadge: { position: "absolute", bottom: -4, right: -4, background: "#16a34a", color: "#fff", fontSize: "0.55rem", fontWeight: 700, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", lineHeight: 1 } as React.CSSProperties,
+  sidebar: { position: "fixed", top: 0, left: 0, width: 220, height: "100vh", background: "#0b1120", borderRight: "1px solid #1e293b", overflowY: "auto", padding: "16px 0", zIndex: 100, boxSizing: "border-box" } as React.CSSProperties,
+  sidebarGroupLabel: { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "12px 16px 4px", color: "#475569" } as React.CSSProperties,
+  sidebarItem: { display: "block", width: "100%", padding: "6px 16px", fontSize: "0.8rem", color: "#94a3b8", background: "none", border: "none", borderLeftWidth: 2, borderLeftStyle: "solid", borderLeftColor: "transparent", textAlign: "left", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", transition: "all 0.15s", boxSizing: "border-box" } as React.CSSProperties,
+  sidebarItemActive: { color: "#f1f5f9", borderLeftColor: "#38bdf8" } as React.CSSProperties,
 };
 
 const BADGE_COLORS: Record<string, { bg: string; color: string }> = {
@@ -79,7 +83,6 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: "#ef4444",
   medium: "#eab308",
   low: "#94a3b8",
-  info: "#818cf8",
 };
 
 // --- SVG Icons ---
@@ -519,11 +522,13 @@ function ActionCard({
   sentStatus,
   onSent,
   onDismiss,
+  cardId,
 }: {
   action: ActionItem;
   sentStatus: SentStatus;
   onSent: (key: string, status: string) => void;
   onDismiss: () => void;
+  cardId?: string;
 }) {
   const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [callState, setCallState] = useState<"idle" | "picked" | "noanswer">("idle");
@@ -572,7 +577,7 @@ function ActionCard({
   }
 
   return (
-    <div style={styles.card} data-priority={action.priority}>
+    <div id={cardId} style={styles.card} data-priority={action.priority}>
       <div style={styles.cardTop}>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <span
@@ -639,6 +644,77 @@ function ActionCard({
   );
 }
 
+// --- Sidebar ---
+function Sidebar({
+  actions,
+  activeId,
+  onNavigate,
+  noActionCount,
+  inactiveCount,
+}: {
+  actions: ActionItem[];
+  activeId: string | null;
+  onNavigate: (id: string) => void;
+  noActionCount: number;
+  inactiveCount: number;
+}) {
+  const sorted = [...actions].sort((a, b) =>
+    a.contactName.localeCompare(b.contactName, "en", { sensitivity: "base" }),
+  );
+
+  return (
+    <nav style={styles.sidebar}>
+      <div style={{ padding: "0 16px 12px", fontSize: "0.85rem", fontWeight: 700, color: "#f1f5f9" }}>
+        Leads
+      </div>
+      {sorted.map((a) => {
+        const itemId = `lead-${a.id}`;
+        const isActive = activeId === itemId;
+        return (
+          <button
+            key={a.id}
+            title={a.contactName}
+            style={{
+              ...styles.sidebarItem,
+              ...(isActive ? styles.sidebarItemActive : {}),
+            }}
+            onClick={() => onNavigate(itemId)}
+          >
+            {a.contactName}
+          </button>
+        );
+      })}
+      {(noActionCount > 0 || inactiveCount > 0) && (
+        <div style={{ ...styles.sidebarGroupLabel, color: "#475569", marginTop: 4 }}>SECTIONS</div>
+      )}
+      {noActionCount > 0 && (
+        <button
+          title="No Action Needed"
+          style={{
+            ...styles.sidebarItem,
+            ...(activeId === "section-no-action" ? styles.sidebarItemActive : {}),
+          }}
+          onClick={() => onNavigate("section-no-action")}
+        >
+          No Action Needed
+        </button>
+      )}
+      {inactiveCount > 0 && (
+        <button
+          title="Inactive Summary"
+          style={{
+            ...styles.sidebarItem,
+            ...(activeId === "section-inactive" ? styles.sidebarItemActive : {}),
+          }}
+          onClick={() => onNavigate("section-inactive")}
+        >
+          Inactive Summary
+        </button>
+      )}
+    </nav>
+  );
+}
+
 // --- Main Dashboard ---
 export default function Dashboard({ initialData }: { initialData: DashboardData | null }) {
   const [data, setData] = useState<DashboardData | null>(initialData);
@@ -671,6 +747,53 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     } catch { /* ignore */ }
   }, []);
 
+  // Sidebar state
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  // Media query for sidebar visibility
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 900px)");
+    setShowSidebar(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setShowSidebar(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, []);
+
+  // IntersectionObserver to track which card is in view
+  useEffect(() => {
+    if (!showSidebar || !data?.actions) return;
+
+    observerRef.current?.disconnect();
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        let topId: string | null = null;
+        let topY = Infinity;
+        for (const entry of entries) {
+          if (entry.isIntersecting && entry.boundingClientRect.top < topY) {
+            topY = entry.boundingClientRect.top;
+            topId = entry.target.id;
+          }
+        }
+        if (topId) setActiveId(topId);
+      },
+      { rootMargin: "-10% 0px -60% 0px", threshold: 0 },
+    );
+    observerRef.current = obs;
+
+    const els = document.querySelectorAll('[id^="lead-"], [id^="section-"]');
+    els.forEach((el) => obs.observe(el));
+
+    return () => obs.disconnect();
+  }, [showSidebar, data, dismissed]);
+
+  const handleNavigate = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     window.location.href = "/login";
@@ -689,7 +812,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
 
   const actions = data.actions.filter((a) => !dismissed.has(a.id));
 
-  const groups: Record<string, ActionItem[]> = { high: [], medium: [], low: [], info: [] };
+  const groups: Record<string, ActionItem[]> = { high: [], medium: [], low: [] };
   for (const a of actions) {
     const p = groups[a.priority] ? a.priority : "low";
     groups[p].push(a);
@@ -699,7 +822,6 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     { key: "high", label: "HIGH PRIORITY", color: "#ef4444" },
     { key: "medium", label: "MEDIUM PRIORITY", color: "#eab308" },
     { key: "low", label: "LOW PRIORITY", color: "#94a3b8" },
-    { key: "info", label: "INFO", color: "#818cf8" },
   ];
 
   const highCount = actions.filter((a) => a.priority === "high").length;
@@ -715,8 +837,21 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
     day: "numeric",
   });
 
+  const noActionCount = data.noAction?.length || 0;
+  const inactiveCount = Object.keys(data.inactiveSummary || {}).length;
+
   return (
-    <div style={styles.root}>
+    <>
+      {showSidebar && (
+        <Sidebar
+          actions={actions}
+          activeId={activeId}
+          onNavigate={handleNavigate}
+          noActionCount={noActionCount}
+          inactiveCount={inactiveCount}
+        />
+      )}
+      <div style={{ ...styles.root, ...(showSidebar ? { marginLeft: 236 } : {}) }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>FTL Prints — Action Dashboard</h1>
@@ -768,6 +903,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
               <ActionCard
                 key={a.id}
                 action={a}
+                cardId={`lead-${a.id}`}
                 sentStatus={sentStatus}
                 onSent={handleSent}
                 onDismiss={() => handleDismiss(a.id)}
@@ -779,7 +915,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
 
       {/* No Action Needed */}
       {data.noAction?.length > 0 && (
-        <CollapsibleSection title="No Action Needed" count={`${data.noAction.length} leads on track`}>
+        <CollapsibleSection title="No Action Needed" count={`${data.noAction.length} leads on track`} sectionId="section-no-action">
           {data.noAction.map((n, i) => (
             <div key={i} style={styles.noActionItem}>
               <strong>{n.contactName}</strong> ({n.stage}) — {n.reason}
@@ -793,6 +929,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
         <CollapsibleSection
           title="Inactive Summary"
           count={String(Object.values(data.inactiveSummary).reduce((s, v) => s + v, 0))}
+          sectionId="section-inactive"
         >
           <div style={styles.inactiveBar}>
             {Object.entries(data.inactiveSummary).map(([label, count]) => (
@@ -805,6 +942,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
         </CollapsibleSection>
       )}
     </div>
+    </>
   );
 }
 
@@ -812,15 +950,17 @@ function CollapsibleSection({
   title,
   count,
   children,
+  sectionId,
 }: {
   title: string;
   count: string;
   children: React.ReactNode;
+  sectionId?: string;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div style={styles.section}>
+    <div id={sectionId} style={styles.section}>
       <div style={styles.sectionHeader} onClick={() => setOpen(!open)}>
         {title} <span>{count}</span>
       </div>
