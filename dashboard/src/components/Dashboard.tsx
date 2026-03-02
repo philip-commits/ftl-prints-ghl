@@ -532,6 +532,10 @@ function ActionCard({
 }) {
   const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [callState, setCallState] = useState<"idle" | "picked" | "noanswer">("idle");
+  useEffect(() => {
+    const s = sentStatus[`${action.id}_call`]?.status;
+    if (s === "picked" || s === "noanswer") setCallState(s);
+  }, [sentStatus, action.id]);
   const [displayStage, setDisplayStage] = useState(action.stage);
 
   const togglePanel = (panel: string) => {
@@ -563,11 +567,23 @@ function ActionCard({
   function handleAnswered() {
     setCallState("picked");
     setOpenPanel("note");
+    onSent(`${action.id}_call`, "picked");
+    fetch("/api/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [`${action.id}_call`]: { status: "picked", ts: Date.now() } }),
+    }).catch(() => {});
   }
 
   function handleNoAnswer() {
     setCallState("noanswer");
     setOpenPanel(null);
+    onSent(`${action.id}_call`, "noanswer");
+    fetch("/api/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [`${action.id}_call`]: { status: "noanswer", ts: Date.now() } }),
+    }).catch(() => {});
     const today = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
     fetch(`/api/note/${action.id}`, {
       method: "POST",

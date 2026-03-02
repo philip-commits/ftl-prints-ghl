@@ -31,7 +31,7 @@ export async function POST(
     });
 
     const sent = await readSentStatus();
-    sent[id] = { status: "noted", ts: Date.now() };
+    sent[`${id}_note`] = { status: "noted", ts: Date.now() };
     await writeSentStatus(sent);
 
     return NextResponse.json({ success: true });
