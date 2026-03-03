@@ -65,7 +65,7 @@ const styles = {
   iconBtn: { background: "none", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", cursor: "pointer", padding: "5px 7px", lineHeight: 1, display: "inline-flex", alignItems: "center", transition: "all 0.15s" } as React.CSSProperties,
   dismissBtn: { background: "none", border: "none", color: "#94a3b8", fontSize: "1.2rem", cursor: "pointer", padding: "2px 6px", lineHeight: 1, opacity: 0.4 } as React.CSSProperties,
   checkBadge: { position: "absolute", bottom: -4, right: -4, background: "#16a34a", color: "#fff", fontSize: "0.55rem", fontWeight: 700, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", lineHeight: 1 } as React.CSSProperties,
-  sidebar: { position: "fixed", top: 0, left: 0, width: 220, height: "100vh", background: "#0b1120", borderRight: "1px solid #1e293b", overflowY: "auto", padding: "16px 0", zIndex: 100, boxSizing: "border-box" } as React.CSSProperties,
+  sidebar: { position: "fixed", top: 0, left: 0, width: 220, height: "100vh", background: "#0b1120", borderRight: "1px solid #1e293b", overflowY: "auto", paddingTop: 205, paddingBottom: 16, zIndex: 100, boxSizing: "border-box" } as React.CSSProperties,
   sidebarGroupLabel: { fontSize: "0.65rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", padding: "12px 16px 4px", color: "#475569" } as React.CSSProperties,
   sidebarItem: { display: "block", width: "100%", padding: "6px 16px", fontSize: "0.8rem", color: "#94a3b8", background: "none", border: "none", borderLeftWidth: 2, borderLeftStyle: "solid", borderLeftColor: "transparent", textAlign: "left", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", transition: "all 0.15s", boxSizing: "border-box" } as React.CSSProperties,
   sidebarItemActive: { color: "#f1f5f9", borderLeftColor: "#38bdf8" } as React.CSSProperties,
@@ -867,7 +867,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   if (!data || !data.actions) {
     return (
       <div style={styles.root}>
-        <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>FTL Prints — Action Dashboard</h1>
+        <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>FTL Prints — GHL Dashboard</h1>
         <div style={styles.loading}>
           No pipeline data yet. Pipeline runs at 8:00 AM ET weekdays.
         </div>
@@ -927,10 +927,10 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
           inactiveCount={inactiveCount}
         />
       )}
-      <div style={{ ...styles.root, ...(showSidebar ? { marginLeft: 236 } : {}) }}>
+      <div style={{ ...styles.root, ...(showSidebar ? { marginLeft: 400 } : {}) }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>FTL Prints — Action Dashboard</h1>
+          <h1 style={{ fontSize: "1.5rem", marginBottom: 4 }}>FTL Prints — GHL Dashboard</h1>
           <div style={styles.dateLine}>
             Updated: {data.generatedAt ? new Date(data.generatedAt).toLocaleString("en-US", { dateStyle: "full", timeStyle: "short" }) : today}
           </div>

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "FTL Prints — Action Dashboard",
+  title: "FTL Prints — GHL Dashboard",
 };
 
 export default function RootLayout({
