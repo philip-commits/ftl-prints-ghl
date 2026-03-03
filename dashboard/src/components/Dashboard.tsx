@@ -60,6 +60,8 @@ const styles = {
   noActionItem: { padding: "6px 0", fontSize: "0.85rem", color: "#94a3b8", borderBottom: "1px solid #334155" } as React.CSSProperties,
   inactiveBar: { display: "flex", gap: 24, padding: "12px 0" } as React.CSSProperties,
   loading: { textAlign: "center" as const, padding: "60px 0", color: "#94a3b8", fontSize: "1.1rem" } as React.CSSProperties,
+  pipelineBar: { display: "flex", gap: 8, flex: 1, justifyContent: "space-evenly", marginTop: -70 } as React.CSSProperties,
+  pipelineStage: { textAlign: "center" as const, flex: 1, minWidth: 80 } as React.CSSProperties,
   iconBtn: { background: "none", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", cursor: "pointer", padding: "5px 7px", lineHeight: 1, display: "inline-flex", alignItems: "center", transition: "all 0.15s" } as React.CSSProperties,
   dismissBtn: { background: "none", border: "none", color: "#94a3b8", fontSize: "1.2rem", cursor: "pointer", padding: "2px 6px", lineHeight: 1, opacity: 0.4 } as React.CSSProperties,
   checkBadge: { position: "absolute", bottom: -4, right: -4, background: "#16a34a", color: "#fff", fontSize: "0.55rem", fontWeight: 700, borderRadius: "50%", width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", lineHeight: 1 } as React.CSSProperties,
@@ -78,6 +80,13 @@ const BADGE_COLORS: Record<string, { bg: string; color: string }> = {
   "Cooled Off": { bg: "#1e1b4b", color: "#818cf8" },
   Unqualified: { bg: "#334155", color: "#94a3b8" },
 };
+
+const PIPELINE_BAR_STAGES: { name: string; color: string }[] = [
+  { name: "New Lead", color: "#ef4444" },
+  { name: "In Progress", color: "#f97316" },
+  { name: "Quote Sent", color: "#eab308" },
+  { name: "Invoice Sent", color: "#22c55e" },
+];
 
 const PRIORITY_COLORS: Record<string, string> = {
   high: "#ef4444",
@@ -523,12 +532,16 @@ function ActionCard({
   onSent,
   onDismiss,
   cardId,
+  effectiveStage,
+  onStageChange,
 }: {
   action: ActionItem;
   sentStatus: SentStatus;
   onSent: (key: string, status: string) => void;
   onDismiss: () => void;
   cardId?: string;
+  effectiveStage: string;
+  onStageChange: (actionId: number, newStage: string) => void;
 }) {
   const [openPanel, setOpenPanel] = useState<string | null>(null);
   const [callState, setCallState] = useState<"idle" | "picked" | "noanswer">("idle");
@@ -536,13 +549,12 @@ function ActionCard({
     const s = sentStatus[`${action.id}_call`]?.status;
     if (s === "picked" || s === "noanswer") setCallState(s);
   }, [sentStatus, action.id]);
-  const [displayStage, setDisplayStage] = useState(action.stage);
 
   const togglePanel = (panel: string) => {
     setOpenPanel(openPanel === panel ? null : panel);
   };
 
-  const badgeColor = BADGE_COLORS[displayStage] || { bg: "#334155", color: "#94a3b8" };
+  const badgeColor = BADGE_COLORS[effectiveStage] || { bg: "#334155", color: "#94a3b8" };
   const company = action.contactCompany ? ` — ${action.contactCompany}` : "";
 
   const getStatus = (key: string): "ready" | "sending" | "sent" | "failed" => {
@@ -603,7 +615,7 @@ function ActionCard({
               color: badgeColor.color,
             }}
           >
-            {displayStage}
+            {effectiveStage}
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -650,7 +662,7 @@ function ActionCard({
         </div>
       )}
 
-      <ComposeArea action={action} sentStatus={sentStatus} onSent={onSent} openPanel={openPanel} onStageMove={setDisplayStage} />
+      <ComposeArea action={action} sentStatus={sentStatus} onSent={onSent} openPanel={openPanel} onStageMove={(newStage) => onStageChange(action.id, newStage)} />
 
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 4 }}>
         <ConvoHistory messages={action.conversationHistory} />
@@ -736,6 +748,11 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   const [data, setData] = useState<DashboardData | null>(initialData);
   const [sentStatus, setSentStatus] = useState<SentStatus>({});
   const [dismissed, setDismissed] = useState<Set<number>>(new Set());
+  const [stageOverrides, setStageOverrides] = useState<Record<number, string>>({});
+
+  const handleStageChange = useCallback((actionId: number, newStage: string) => {
+    setStageOverrides((prev) => ({ ...prev, [actionId]: newStage }));
+  }, []);
 
   // Load sent status on mount
   useEffect(() => {
@@ -872,6 +889,17 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   const noActionCount = data.noAction?.length || 0;
   const inactiveCount = Object.keys(data.inactiveSummary || {}).length;
 
+  // Pipeline stage counts (all opps, including dismissed)
+  const pipelineCounts: Record<string, number> = {};
+  for (const s of PIPELINE_BAR_STAGES) pipelineCounts[s.name] = 0;
+  for (const a of data.actions) {
+    const stage = stageOverrides[a.id] || a.stage;
+    if (stage in pipelineCounts) pipelineCounts[stage]++;
+  }
+  for (const n of data.noAction || []) {
+    if (n.stage in pipelineCounts) pipelineCounts[n.stage]++;
+  }
+
   return (
     <>
       {showSidebar && (
@@ -907,19 +935,29 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
         </button>
       </div>
 
-      {/* Stats */}
-      <div style={styles.statsBar}>
-        <div style={styles.statPill}>
-          <span style={{ fontWeight: 700 }}>{actions.length}</span> Actions
+      {/* Stats + Pipeline Stage Totals */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32, flexWrap: "wrap", gap: 16 }}>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <div style={styles.statPill}>
+            <span style={{ fontWeight: 700 }}>{actions.length}</span> Actions
+          </div>
+          <div style={styles.statPill}>
+            <span style={{ fontWeight: 700, color: PRIORITY_COLORS.high }}>{highCount}</span> High
+          </div>
+          <div style={styles.statPill}>
+            <span style={{ fontWeight: 700, color: PRIORITY_COLORS.medium }}>{medCount}</span> Medium
+          </div>
+          <div style={styles.statPill}>
+            <span style={{ fontWeight: 700, color: "#94a3b8" }}>{lowCount}</span> Low
+          </div>
         </div>
-        <div style={styles.statPill}>
-          <span style={{ fontWeight: 700, color: PRIORITY_COLORS.high }}>{highCount}</span> High
-        </div>
-        <div style={styles.statPill}>
-          <span style={{ fontWeight: 700, color: PRIORITY_COLORS.medium }}>{medCount}</span> Medium
-        </div>
-        <div style={styles.statPill}>
-          <span style={{ fontWeight: 700, color: "#94a3b8" }}>{lowCount}</span> Low
+        <div style={styles.pipelineBar}>
+          {PIPELINE_BAR_STAGES.map((s) => (
+            <div key={s.name} style={styles.pipelineStage}>
+              <div style={{ fontSize: "1.5rem", fontWeight: 700, color: s.color }}>{pipelineCounts[s.name]}</div>
+              <div style={{ fontSize: "0.7rem", color: "#94a3b8" }}>{s.name}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -939,6 +977,8 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
                 sentStatus={sentStatus}
                 onSent={handleSent}
                 onDismiss={() => handleDismiss(a.id)}
+                effectiveStage={stageOverrides[a.id] || a.stage}
+                onStageChange={handleStageChange}
               />
             ))}
           </div>
