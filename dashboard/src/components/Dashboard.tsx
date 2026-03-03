@@ -776,9 +776,25 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
         const r = await fetch("/api/actions");
         const fresh = await r.json();
         if (fresh.generatedAt && fresh.generatedAt !== data?.generatedAt) {
+          // Detect incremental (watcher) vs full (daily) update:
+          // If all existing opportunityIds are still present → watcher append → preserve state
+          const existingOppIds = new Set<string>();
+          for (const a of data?.actions || []) if (a.opportunityId) existingOppIds.add(a.opportunityId);
+          for (const n of data?.noAction || []) if (n.opportunityId) existingOppIds.add(n.opportunityId);
+
+          const freshOppIds = new Set<string>();
+          for (const a of fresh.actions || []) if (a.opportunityId) freshOppIds.add(a.opportunityId);
+          for (const n of fresh.noAction || []) if (n.opportunityId) freshOppIds.add(n.opportunityId);
+
+          const isIncremental = existingOppIds.size > 0 &&
+            [...existingOppIds].every((id) => freshOppIds.has(id));
+
           setData(fresh);
-          setDismissed(new Set());
-          setSentStatus({});
+          if (!isIncremental) {
+            // Full refresh (daily pipeline) — reset everything
+            setDismissed(new Set());
+            setSentStatus({});
+          }
         }
       } catch { /* ignore */ }
     }, 2 * 60 * 1000);

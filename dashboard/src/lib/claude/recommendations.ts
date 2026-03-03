@@ -379,6 +379,7 @@ export async function generateRecommendations(
       const item = result.noAction as NoActionItem;
       item.contactName = lead.name;
       item.stage = lead.stage;
+      item.opportunityId = lead.id;
       noAction.push(item);
     }
   }

@@ -126,6 +126,7 @@ export interface NoActionItem {
   contactName: string;
   stage: string;
   reason: string;
+  opportunityId?: string;
 }
 
 export interface DashboardData {
