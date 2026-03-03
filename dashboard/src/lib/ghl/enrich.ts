@@ -124,7 +124,9 @@ function enrichFromConversation(convo: ConversationMeta | null): ConvoFields {
 
   const now = new Date();
   let daysSince: number | null = null;
-  const lastDate = convo.lastMessageDate || convo.lastManualMessageDate;
+  // Use manual message date only — automated welcome messages (form
+  // submission confirmations) should NOT count as contact for cooldown.
+  const lastDate = convo.lastManualMessageDate;
   if (lastDate) {
     const dt = parseTimestamp(lastDate);
     if (dt) daysSince = businessDaysSince(dt, now);

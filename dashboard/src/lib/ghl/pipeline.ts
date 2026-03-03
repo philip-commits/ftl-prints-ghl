@@ -1,6 +1,6 @@
-import { PIPELINE_ID, LOCATION_ID, ACTIVE_STAGES, INACTIVE_STAGES, CUSTOM_FIELDS } from "../constants";
+import { PIPELINE_ID, LOCATION_ID, ACTIVE_STAGES, INACTIVE_STAGES, CUSTOM_FIELDS, STAGE_IDS } from "../constants";
 import { ghlFetch } from "./client";
-import type { GHLOpportunity, ParsedLead } from "./types";
+import type { GHLOpportunity, ParsedLead, EnrichedLead } from "./types";
 
 interface SearchResponse {
   opportunities?: GHLOpportunity[];
@@ -70,4 +70,35 @@ export async function fetchOpportunities(): Promise<{
   }
 
   return { active, inactiveSummary };
+}
+
+/**
+ * Auto-move New Leads to In Progress if manual outreach already happened
+ * (e.g., someone on the team messaged them directly in GHL).
+ * Mutates the enriched lead's stage/stageId in place so downstream
+ * processing sees the correct stage.
+ */
+export async function autoMoveNewLeads(leads: EnrichedLead[]): Promise<number> {
+  const inProgressId = STAGE_IDS["In Progress"];
+  let moved = 0;
+
+  for (const lead of leads) {
+    if (lead.stage !== "New Lead" || !lead.hasManualOutreach) continue;
+
+    try {
+      await ghlFetch({
+        path: `/opportunities/${lead.id}`,
+        method: "PUT",
+        body: { pipelineStageId: inProgressId },
+      });
+      lead.stage = "In Progress";
+      lead.stageId = inProgressId;
+      moved++;
+      console.log(`[auto-move] ${lead.name}: New Lead → In Progress`);
+    } catch (err) {
+      console.warn(`[auto-move] Failed for ${lead.name}:`, err);
+    }
+  }
+
+  return moved;
 }

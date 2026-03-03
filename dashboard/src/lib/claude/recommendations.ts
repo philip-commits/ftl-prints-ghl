@@ -40,7 +40,9 @@ The system runs simple checks BEFORE you see the lead:
 4. **Quote Sent / Invoice Sent** → flagged as "follow_up" — YOU decide the right action and channel based on conversation context
 5. **Cooldown** → if contacted within the last business day, suppressed to "none" to avoid piling on
 
-When suggestedAction="none" with a cooldown hint, it means the lead was just contacted. Respect this unless conversation context demands immediate action (e.g., they replied and need a response).
+When suggestedAction="none" with a cooldown hint, it means the lead was just manually contacted. Respect this unless conversation context demands immediate action (e.g., they replied and need a response).
+
+**IMPORTANT: Automated messages don't count as outreach.** GHL sends automated welcome messages (form submission confirmations) when a lead submits a request. These are NOT real outreach — they just confirm receipt. If the only outbound messages in the conversation history are automated (workflow/automation), the lead still needs manual outreach. Look at the hasManualOutreach field and the message types in conversationHistory to distinguish.
 
 ## YOUR JOB — INTELLIGENT RECOMMENDATION
 

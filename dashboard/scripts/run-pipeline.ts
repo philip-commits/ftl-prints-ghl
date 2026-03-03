@@ -1,4 +1,4 @@
-import { fetchOpportunities } from "@/lib/ghl/pipeline";
+import { fetchOpportunities, autoMoveNewLeads } from "@/lib/ghl/pipeline";
 import { fetchAllConversations } from "@/lib/ghl/conversations";
 import { enrichLeads } from "@/lib/ghl/enrich";
 import { generateRecommendations } from "@/lib/claude/recommendations";
@@ -23,6 +23,10 @@ async function main() {
   console.log("[pipeline] Enriching leads...");
   const enriched = enrichLeads(active, conversations);
   console.log(`[pipeline] Enriched ${enriched.length} leads`);
+
+  // Step 3b: Auto-move New Leads that already have manual outreach
+  const moved = await autoMoveNewLeads(enriched);
+  if (moved > 0) console.log(`[pipeline] Auto-moved ${moved} lead(s) to In Progress`);
 
   // Step 4: Generate recommendations
   console.log("[pipeline] Generating recommendations...");

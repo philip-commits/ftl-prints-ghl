@@ -1,4 +1,4 @@
-import { fetchOpportunities } from "@/lib/ghl/pipeline";
+import { fetchOpportunities, autoMoveNewLeads } from "@/lib/ghl/pipeline";
 import { fetchAllConversations } from "@/lib/ghl/conversations";
 import { enrichLeads } from "@/lib/ghl/enrich";
 import { generateRecommendations } from "@/lib/claude/recommendations";
@@ -29,6 +29,16 @@ async function main() {
   const { active, inactiveSummary } = await fetchOpportunities();
   console.log(`[watcher] ${active.length} active leads in GHL`);
 
+  // Step 3b: Auto-move any existing New Leads that have been manually contacted
+  const staleNewLeads = active.filter((lead) => knownIds.has(lead.id) && lead.stage === "New Lead");
+  if (staleNewLeads.length > 0) {
+    console.log(`[watcher] Checking ${staleNewLeads.length} existing New Lead(s) for manual outreach...`);
+    const staleConvos = await fetchAllConversations(staleNewLeads);
+    const staleEnriched = enrichLeads(staleNewLeads, staleConvos);
+    const moved = await autoMoveNewLeads(staleEnriched);
+    if (moved > 0) console.log(`[watcher] Auto-moved ${moved} existing lead(s) to In Progress`);
+  }
+
   // Step 4: Filter to only new leads
   const newLeads = active.filter((lead) => !knownIds.has(lead.id));
   if (newLeads.length === 0) {
@@ -43,6 +53,10 @@ async function main() {
 
   console.log("[watcher] Enriching leads...");
   const enriched = enrichLeads(newLeads, conversations);
+
+  // Auto-move New Leads that already have manual outreach
+  const moved = await autoMoveNewLeads(enriched);
+  if (moved > 0) console.log(`[watcher] Auto-moved ${moved} lead(s) to In Progress`);
 
   console.log("[watcher] Generating recommendations...");
   const { actions: newActions, noAction: newNoAction } = await generateRecommendations(
