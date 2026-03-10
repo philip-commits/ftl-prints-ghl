@@ -21,9 +21,8 @@ import urllib.error
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 
-# Import ghl_auth from sibling skill
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                "../../ghl/assets"))
+# Import ghl_auth from local assets
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ghl_auth import get_access_token
 
 # --- Config ---
@@ -101,9 +100,8 @@ def ghl_request(url, auth, method="GET"):
             if e.code == 401:
                 print("ERROR: 401 Unauthorized from GHL API.", file=sys.stderr)
                 print("Token expired or invalid. To fix:", file=sys.stderr)
-                print("  python3 .claude/skills/ghl/assets/ghl_oauth_setup.py <client_id> <client_secret>",
+                print("Re-authorize via GHL OAuth setup or update the PIT token in ~/.claude/mcp.json",
                       file=sys.stderr)
-                print("Or update the PIT token in ~/.claude/mcp.json", file=sys.stderr)
                 sys.exit(1)
             if e.code in (500, 503) and attempt == 0:
                 time.sleep(2)

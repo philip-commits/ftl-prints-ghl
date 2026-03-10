@@ -100,7 +100,7 @@ def get_access_token():
                 pit = _load_pit_fallback()
                 if pit:
                     return pit
-                raise RuntimeError(f"OAuth refresh failed: {e}. Run ghl_oauth_setup.py to re-authorize.")
+                raise RuntimeError(f"OAuth refresh failed: {e}. Re-authorize via GHL OAuth setup.")
         return f"Bearer {tokens['access_token']}"
 
     # No OAuth tokens — try PIT fallback
@@ -109,7 +109,7 @@ def get_access_token():
         return pit
 
     raise RuntimeError(
-        "No GHL auth configured. Run:\n"
-        "  python3 .claude/skills/ghl/assets/ghl_oauth_setup.py <client_id> <client_secret>\n"
-        "Or add a PIT token to ~/.claude/mcp.json"
+        "No GHL auth configured.\n"
+        "Add a PIT token to ~/.claude/mcp.json or set up OAuth2 tokens\n"
+        "in ~/.config/ftl-prints/ghl_tokens.json"
     )

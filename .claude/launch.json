@@ -1,11 +1,4 @@
 {
   "version": "0.0.1",
-  "configurations": [
-    {
-      "name": "ghl-dashboard",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": [".claude/skills/ghl/assets/server.py"],
-      "port": 8787
-    }
-  ]
+  "configurations": []
 }
