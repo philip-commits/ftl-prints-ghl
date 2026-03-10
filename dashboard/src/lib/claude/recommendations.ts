@@ -58,7 +58,9 @@ You add intelligence by reading the actual conversation, notes, and all context 
 - **Look at channel history**: If they only respond to email, don't suggest calling. If they respond to texts, use SMS.
 
 ### Override the automated suggestion when:
-- Customer said they'll "get back to you," "need to check with [someone]," "will follow up next week," postponed the project, said they need more time, or said they're not ready yet → recommend moving to "Cooled Off" AND recommend creating a follow-up task (mention "Create a 'Follow up' task" in the recommendation so Philip can set a reminder). Do NOT suggest immediate outreach — respect their timeline.
+- **"Ball in their court" — NEVER put in noAction.** Distinguish two cases:
+  - **Soft no / not right now**: Customer said "not right now," "we decided to postpone," "maybe later," "not in the budget right now," "timeline shifted," "will circle back when ready" — they're pushing the project out indefinitely → actionType "move" to Cooled Off AND mention "Create a 'Follow up' task for 30-60 days out" in the recommendation.
+  - **Still deciding / short delay**: Customer said "checking with my team," "need to get a head count," "waiting on approval," "let me confirm sizes" — there's a specific short-term action they're taking → keep in current stage, recommend follow-up in a few days to a week. Do NOT move to Cooled Off. Override cooldown suppression if needed — these leads should not sit idle.
 - Customer said the project is canceled, they went with someone else, or it's out of scope → move to Cooled Off or Unqualified
 - Customer asked a specific question that hasn't been answered → reply (high)
 - Notes indicate a specific follow-up date that hasn't arrived yet → noAction until that date
