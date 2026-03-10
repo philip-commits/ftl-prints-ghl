@@ -11,6 +11,7 @@ Writes:
 """
 
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -56,7 +57,7 @@ COOLDOWN_CALL = 3           # before recommending another call
 COOLDOWN_EMAIL = 2          # before recommending another email
 
 # Actions that bypass cooldown entirely
-COOLDOWN_BYPASS_ACTIONS = {"reply", "outreach", "move"}
+COOLDOWN_BYPASS_ACTIONS = {"reply", "outreach", "move", "move_forward"}
 
 PIPELINE_FILE = "/tmp/ftl_pipeline.json"
 CONVOS_FILE = "/tmp/ftl_convos.json"
@@ -108,6 +109,77 @@ def approx_business_days(calendar_days):
     full_weeks = calendar_days // 7
     remainder = calendar_days % 7
     return full_weeks * 5 + min(remainder, 5)
+
+
+# --- Stage ordering for advancement detection ---
+STAGE_ORDER = ["New Lead", "In Progress", "Quote Sent", "Invoice Sent"]
+STAGE_IDS = {
+    "Quote Sent": "336a5bee-cad2-400f-83fd-cae1bc837029",
+    "Invoice Sent": "259ee5f4-5667-4797-948e-f36ec28c70a0",
+}
+
+# Phrases that strongly indicate actual pricing was provided (not just mentioned)
+# These require a dollar amount nearby to trigger
+QUOTE_PRICE_CONTEXT = [
+    "per shirt", "per unit", "per piece", "per item", "each",
+    "total", "subtotal", "comes to", "would be", "price is",
+    "pricing below", "breakdown", "here's what", "your order",
+]
+
+# Phrases that indicate a quote was sent even without a dollar amount in the body
+# (e.g., quote sent as attachment or via GHL quoting tool)
+QUOTE_SENT_PHRASES = [
+    "attached is your quote", "here's your quote", "here is your quote",
+    "sent you a quote", "sent the quote", "sending your quote",
+    "attached is the quote", "quote attached", "estimate attached",
+    "proposal attached", "here's the pricing", "here is the pricing",
+    "sent you the pricing", "pricing is attached",
+]
+
+# Phrases that mention "quote" but do NOT mean one was sent — skip these
+QUOTE_FALSE_POSITIVES = [
+    "send you a quote", "get you a quote", "put together a quote",
+    "prepare a quote", "work up a quote", "quote once", "quote after",
+    "quote when", "need .* to quote", "before i can quote",
+]
+
+def detect_quote_sent_in_messages(messages):
+    """
+    Scan outbound messages for strong indicators that actual pricing/quote was provided.
+
+    Returns True only when there's high confidence a quote was sent, not just discussed.
+    Requires either:
+      1. A dollar amount ($X) paired with a pricing-context phrase, OR
+      2. An explicit "quote attached/sent" phrase
+    """
+    for msg in (messages or []):
+        if msg.get("direction") != "outbound":
+            continue
+        body = (msg.get("body") or "").lower()
+        if not body:
+            continue
+
+        # Check for explicit "quote sent/attached" phrases (no $ needed)
+        for phrase in QUOTE_SENT_PHRASES:
+            if phrase in body:
+                return True
+
+        # Check for dollar amount + pricing context (strong signal)
+        has_dollar = bool(re.search(r'\$\d', body))
+        if has_dollar:
+            # Make sure it's not a false positive like "send you a quote"
+            is_false_positive = any(re.search(fp, body) for fp in QUOTE_FALSE_POSITIVES)
+            if is_false_positive:
+                continue
+            # Dollar amount + pricing context phrase = likely a real quote
+            for phrase in QUOTE_PRICE_CONTEXT:
+                if phrase in body:
+                    return True
+            # Multiple dollar amounts in one message = line items (very strong)
+            if len(re.findall(r'\$\d', body)) >= 2:
+                return True
+
+    return False
 
 
 BUDGET_TIERS = {
@@ -217,6 +289,8 @@ def enrich_from_conversation(lead, convo):
             else:
                 days_email = business_days_since(dt, now)
 
+    messages = convo.get("messages", [])
+
     return {
         "needsReply": (convo.get("unreadCount", 0) or 0) > 0
             and convo.get("lastMessageDirection") == "inbound",
@@ -229,7 +303,8 @@ def enrich_from_conversation(lead, convo):
         "noConversation": False,
         "conversationId": convo.get("conversationId"),
         "notes": convo.get("notes", []),
-        "conversationHistory": convo.get("messages", []),
+        "conversationHistory": messages,
+        "quoteSentDetected": detect_quote_sent_in_messages(messages),
     }
 
 
@@ -263,8 +338,8 @@ def decide_action(lead):
         "standard": {"call": 1, "followup": 3, "final": 6, "hv_extra": None, "move": 10},
         "low":      {"call": 1, "followup": 2, "final": 5, "hv_extra": None, "move": 7},
     }
-    # Quote Sent uses tight windows regardless of value
-    if stage == "Quote Sent":
+    # Quote Sent / Invoice Sent uses tight windows regardless of value
+    if stage in ("Quote Sent", "Invoice Sent"):
         t = {"call": 1, "followup": 2, "final": 5, "hv_extra": None, "move": 7}
     else:
         t = thresholds.get(tier, thresholds["standard"])
@@ -275,55 +350,54 @@ def decide_action(lead):
     if needs_reply:
         return ("reply", "high", "Inbound message waiting — reply needed")
 
+    # 1.5. Stage advancement — quote sent but stage hasn't been updated
+    #       These stages indicate the opp hasn't reached "Quote Sent" yet
+    quote_detected = lead.get("quoteSentDetected", False)
+    if quote_detected and stage in ("New Lead", "In Progress"):
+        return ("move_forward", "high",
+                f"Quote was sent but stage is still '{stage}' — move to Quote Sent")
+
     # 2. New Lead or no manual outreach yet — can't escalate what hasn't started
     if stage == "New Lead" or not has_manual:
         label = "New lead" if stage == "New Lead" else "No manual outreach yet"
         return ("outreach", "high", f"{label} — send personalized welcome")
 
-    # 3. "Needs Attention" stage — Philip flagged manually, high priority
-    #    but still respect outreach history and cooldowns (don't spam)
-    if stage == "Needs Attention":
+    # 3. Quote Sent / Invoice Sent — money on the table, own escalation ladder
+    if stage in ("Quote Sent", "Invoice Sent"):
+        stage_label = stage.lower()
         if bdays >= t["move"] and outbound_count >= min_attempts:
-            return ("move", "high", f"Needs Attention but {bdays} bdays, {outbound_count} attempts — consider Cooled Off")
-        if is_intl:
-            return ("follow_up_email", "high", "Flagged for attention — international, email only")
-        return ("call", "high", "Flagged for attention — call or email")
-
-    # 4. Quote Sent — money on the table, own escalation ladder
-    if stage == "Quote Sent":
-        if bdays >= t["move"] and outbound_count >= min_attempts:
-            return ("move", "info", f"{bdays} bdays since quote sent, {outbound_count} attempts, no response — move to Cooled Off")
+            return ("move", "info", f"{bdays} bdays since {stage_label}, {outbound_count} attempts, no response — move to Cooled Off")
         if bdays >= t["move"]:
-            return ("follow_up_email", "medium", f"{bdays} bdays since quote sent but only {outbound_count}/{min_attempts} attempts — follow up before closing")
+            return ("follow_up_email", "medium", f"{bdays} bdays since {stage_label} but only {outbound_count}/{min_attempts} attempts — follow up before closing")
         if bdays >= t["final"]:
-            return ("final_attempt_email", "medium", f"{bdays} bdays since quote sent — final follow-up before closing")
+            return ("final_attempt_email", "medium", f"{bdays} bdays since {stage_label} — final follow-up before closing")
         if bdays >= t["followup"]:
-            return ("follow_up_email", "medium", f"{bdays} bdays since quote sent — check if they have questions")
+            return ("follow_up_email", "medium", f"{bdays} bdays since {stage_label} — check if they have questions")
         if bdays >= t["call"]:
             if is_intl:
-                return ("follow_up_email", "medium", f"{bdays} bday(s) since quote sent, international — email follow-up")
-            return ("call", "high", f"{bdays} bday(s) since quote sent — call to discuss")
-        return ("none", "none", "Quote sent recently, waiting for response")
+                return ("follow_up_email", "medium", f"{bdays} bday(s) since {stage_label}, international — email follow-up")
+            return ("call", "high", f"{bdays} bday(s) since {stage_label} — call to discuss")
+        return ("none", "none", f"{stage} recently, waiting for response")
 
-    # 5. High-value extra attempt (10-13 bdays) — one more try before moving
+    # 4. High-value extra attempt (10-13 bdays) — one more try before moving
     if tier == "high" and t["hv_extra"] is not None and t["hv_extra"] <= bdays < t["move"]:
         return ("high_value_followup", "high", f"High-value lead at {bdays} bdays — extra attempt before closing out")
 
-    # 6. Move threshold — stale lead (requires both time AND attempts)
+    # 5. Move threshold — stale lead (requires both time AND attempts)
     if bdays >= t["move"] and outbound_count >= min_attempts:
         return ("move", "info", f"{bdays} bdays in {stage}, {outbound_count} attempts, no response — move to Cooled Off")
     if bdays >= t["move"]:
         return ("follow_up_email", "medium", f"{bdays} bdays in {stage} but only {outbound_count}/{min_attempts} attempts — follow up before closing")
 
-    # 7. Final attempt
+    # 6. Final attempt
     if bdays >= t["final"]:
         return ("final_attempt_email", "medium", f"{bdays} bdays no response — final follow-up before moving to Cooled Off")
 
-    # 8. Follow-up email
+    # 7. Follow-up email
     if bdays >= t["followup"]:
         return ("follow_up_email", "medium", f"{bdays} bdays no response — follow-up email")
 
-    # 9. First follow-up (1+ bday)
+    # 8. First follow-up (1+ bday)
     if bdays >= t["call"]:
         if is_intl:
             return ("follow_up_email", "medium", f"{bdays} bday(s) no response, international — email only")

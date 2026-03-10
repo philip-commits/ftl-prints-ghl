@@ -38,9 +38,8 @@ UA = "FTL-Prints-Pipeline/1.0"
 STAGES = {
     "29fcf7b0-289c-44a4-ad25-1d1a0aea9063": "New Lead",
     "5ee824df-7708-4aba-9177-d5ac02dd6828": "In Progress",
-    "259ee5f4-5667-4797-948e-f36ec28c70a0": "Quote Sent",
-    "accf1eef-aa13-46c3-938d-f3ec6fbe498b": "Needs Attention",
-    "336a5bee-cad2-400f-83fd-cae1bc837029": "Follow Up",
+    "336a5bee-cad2-400f-83fd-cae1bc837029": "Quote Sent",
+    "259ee5f4-5667-4797-948e-f36ec28c70a0": "Invoice Sent",
     "1ab155c2-282d-45eb-bd43-1052489eb2a1": "Sale",
     "7ec748b8-920d-4bdb-bf09-74dd22d27846": "Cooled Off",
     "b909061c-9141-45d7-b1e2-fd37432c3596": "Unqualified",

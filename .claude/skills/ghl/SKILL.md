@@ -79,27 +79,25 @@ Pipeline: "New Lead Pipeline"
 Pipeline ID: GeLwykvW1Fup6Z5oiKir
 
 Stages (in order):
-1. New Lead        — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
-2. In Progress     — 5ee824df-7708-4aba-9177-d5ac02dd6828
-3. Quote Sent      — 259ee5f4-5667-4797-948e-f36ec28c70a0
-4. Needs Attention — accf1eef-aa13-46c3-938d-f3ec6fbe498b
-5. Follow Up       — 336a5bee-cad2-400f-83fd-cae1bc837029
-6. Sale            — 1ab155c2-282d-45eb-bd43-1052489eb2a1
-7. Cooled Off      — 7ec748b8-920d-4bdb-bf09-74dd22d27846
-8. Unqualified     — b909061c-9141-45d7-b1e2-fd37432c3596
+1. New Lead      — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
+2. In Progress   — 5ee824df-7708-4aba-9177-d5ac02dd6828
+3. Quote Sent    — 336a5bee-cad2-400f-83fd-cae1bc837029
+4. Invoice Sent  — 259ee5f4-5667-4797-948e-f36ec28c70a0
+5. Sale          — 1ab155c2-282d-45eb-bd43-1052489eb2a1
+6. Cooled Off    — 7ec748b8-920d-4bdb-bf09-74dd22d27846
+7. Unqualified   — b909061c-9141-45d7-b1e2-fd37432c3596
 
 Location ID: iCyLg9rh8NtPpTfFCcGk
 Active Stages (full analysis):
-  1. New Lead        — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
-  2. In Progress     — 5ee824df-7708-4aba-9177-d5ac02dd6828
-  3. Quote Sent      — 259ee5f4-5667-4797-948e-f36ec28c70a0
-  4. Needs Attention — accf1eef-aa13-46c3-938d-f3ec6fbe498b
-  5. Follow Up       — 336a5bee-cad2-400f-83fd-cae1bc837029
+  1. New Lead      — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
+  2. In Progress   — 5ee824df-7708-4aba-9177-d5ac02dd6828
+  3. Quote Sent    — 336a5bee-cad2-400f-83fd-cae1bc837029
+  4. Invoice Sent  — 259ee5f4-5667-4797-948e-f36ec28c70a0
 
 Inactive Stages (unanswered check only):
-  6. Sale            — 1ab155c2-282d-45eb-bd43-1052489eb2a1
-  7. Cooled Off      — 7ec748b8-920d-4bdb-bf09-74dd22d27846
-  8. Unqualified     — b909061c-9141-45d7-b1e2-fd37432c3596
+  5. Sale          — 1ab155c2-282d-45eb-bd43-1052489eb2a1
+  6. Cooled Off    — 7ec748b8-920d-4bdb-bf09-74dd22d27846
+  7. Unqualified   — b909061c-9141-45d7-b1e2-fd37432c3596
 ```
 
 ### Custom Field Mapping
@@ -203,9 +201,8 @@ print(f"Total opportunities: {len(opportunities)}")
 ACTIVE_STAGES = {
     "29fcf7b0-289c-44a4-ad25-1d1a0aea9063": "New Lead",
     "5ee824df-7708-4aba-9177-d5ac02dd6828": "In Progress",
-    "259ee5f4-5667-4797-948e-f36ec28c70a0": "Quote Sent",
-    "accf1eef-aa13-46c3-938d-f3ec6fbe498b": "Needs Attention",
-    "336a5bee-cad2-400f-83fd-cae1bc837029": "Follow Up",
+    "336a5bee-cad2-400f-83fd-cae1bc837029": "Quote Sent",
+    "259ee5f4-5667-4797-948e-f36ec28c70a0": "Invoice Sent",
 }
 INACTIVE_STAGES = {
     "1ab155c2-282d-45eb-bd43-1052489eb2a1": "Sale",
@@ -294,7 +291,7 @@ with open("/tmp/ftl_pipeline.json", "w") as fh:
 
 # Print summary to stdout
 print(f"\nActive opportunities: {len(active)}")
-for stage_name in ["New Lead", "In Progress", "Quote Sent", "Needs Attention", "Follow Up"]:
+for stage_name in ["New Lead", "In Progress", "Quote Sent", "Invoice Sent"]:
     count = sum(1 for o in active if o["stage"] == stage_name)
     if count: print(f"  {stage_name}: {count}")
 print(f"\nInactive opportunities: {sum(inactive_summary.values())}")
@@ -354,8 +351,8 @@ The enrichment script (Phase 2.5) has already computed `suggestedAction`, `sugge
 
 **For each lead in `leads`:**
 1. Review `suggestedAction` and `hint` — these are the script's recommendation based on conversation state, stage age, and phone type
-2. Override if conversation context warrants it (e.g., lead said "back next week", project is out of scope, lead explicitly declined)
-3. Map to dashboard action format: reply, outreach, call, follow_up_email, move, or none
+2. Override if conversation context warrants it (e.g., project is out of scope, lead explicitly declined). See the "ball in their court" rule below for leads who said they'd get back to us
+3. Map to dashboard action format: reply, outreach, call, follow_up_email, move, move_forward, or none
 4. Use `missingInfo`, `isInternational`, `hasArtwork`, etc. directly — do NOT re-derive these from raw custom fields
 5. **Read conversation history AND notes carefully** — two data sources inform context:
 
@@ -374,6 +371,24 @@ The enrichment script (Phase 2.5) has already computed `suggestedAction`, `sugge
    - Whether a lead is actually dead (e.g., note says "not interested, wrong service" → move to Unqualified instead of Cooled Off)
    - If notes contain useful status info beyond what's in the messages, append a short "Note: ..." phrase to `context`
    - Include the `notes` array in each action object so the dashboard shows them as collapsible "Prior notes" for Philip's reference
+
+6. **Check for stage advancement (`move_forward`)** — The enrichment script detects when a quote/pricing was sent in the conversation but the opportunity is still in an earlier stage (New Lead, In Progress, etc.). When `suggestedAction` is `"move_forward"`:
+   - Set `actionType: "move"` with `targetStageId` pointing to the correct forward stage (usually Quote Sent: `336a5bee-cad2-400f-83fd-cae1bc837029`)
+   - The `move_forward` action takes priority — but if there's ALSO a follow-up or other action needed (e.g., quote sent + no response), combine them: move the stage AND include the follow-up action (call/email) as the primary action with the stage move as an additional recommendation
+   - Even if the enrichment script doesn't flag it, use your judgment: if the conversation clearly shows a quote was sent and the stage doesn't reflect it, recommend the move
+
+7. **"Ball in their court" rule — NEVER drop to No Action.** When the conversation shows the customer hasn't said yes or no yet, do NOT override the action to `none`. Distinguish between two cases:
+
+   **a) Soft no / not right now** — Customer said "not right now," "we decided to postpone," "maybe later," "not in the budget right now," "timeline shifted," "will circle back when ready," etc. They're pushing the project out indefinitely:
+   - Use `actionType: "move"` with `targetStageId` for Cooled Off (`7ec748b8-920d-4bdb-bf09-74dd22d27846`)
+   - In `recommendation`, include creating a follow-up task for **30-60 days out** to touch base
+   - Examples: "we decided to postpone," "timeline shifted, will circle back when ready," "not in the budget right now"
+
+   **b) Still deciding / short delay** — Customer is actively working on it but needs a few days: "checking with my team," "need to get a head count," "waiting on approval," "let me confirm sizes," etc. There's a specific short-term action they're taking:
+   - Do NOT move to Cooled Off — keep them in their current stage
+   - Use `actionType: "follow_up_email"` or `"call"` with a note in `recommendation` about the appropriate follow-up timing (a few days to a week)
+   - If the enrichment script's cooldown suppressed the action to `none`, override it back to a follow-up action — these leads should not sit idle
+   - Examples: "checking with my team," "need to get a head count," "waiting on boss to approve"
 
 For each action, draft a message following these rules:
 
@@ -441,7 +456,7 @@ Pre-write both a "tried calling" SMS and email for each call action:
       "contactEmail": "ihurd@isolve.com",
       "contactPhone": "(508) 308-0059",
       "opportunityId": "xxx",
-      "stage": "Follow Up",
+      "stage": "In Progress",
       "context": "Replied asking for invoice + minimum qty. Wants 50 black tees with white logo for company event.",
       "recommendation": "Reply with invoice and confirm minimum order is 24 pieces.",
       "conversationHistory": [
@@ -482,7 +497,7 @@ Pre-write both a "tried calling" SMS and email for each call action:
       "contactId": "xxx",
       "contactName": "John Doe",
       "opportunityId": "xxx",
-      "stage": "Follow Up",
+      "stage": "In Progress",
       "context": "No response after 12 days and 2 follow-ups.",
       "recommendation": "Move to Cooled Off — no engagement after multiple attempts.",
       "targetStageId": "7ec748b8-920d-4bdb-bf09-74dd22d27846",
@@ -509,7 +524,7 @@ Note: With the 1-day follow-up threshold, the `noAction` array will typically be
 
 Action IDs must be sequential integers starting at 1. Every active lead must appear in either `actions` or `noAction` — no leads silently dropped.
 
-**Categorization rule:** A lead goes into `noAction` ONLY if its `suggestedAction` is `"none"` (after cooldown). ALL other `suggestedAction` values — including `"move"`, `"reply"`, `"outreach"`, `"call"`, `"follow_up_email"`, `"final_attempt_email"`, `"high_value_followup"` — MUST go into `actions`, regardless of priority level. A `"move"` action with `priority: "info"` is still an action that requires Philip's confirmation, not "no action needed".
+**Categorization rule:** A lead goes into `noAction` ONLY if its `suggestedAction` is `"none"` (after cooldown) AND the conversation does NOT indicate the ball is in the customer's court (see rule 7). ALL other `suggestedAction` values — including `"move"`, `"reply"`, `"outreach"`, `"call"`, `"follow_up_email"`, `"final_attempt_email"`, `"high_value_followup"` — MUST go into `actions`, regardless of priority level. A `"move"` action with `priority: "info"` is still an action that requires Philip's confirmation, not "no action needed".
 
 ### Phase 4: Launch Dashboard
 

@@ -11,6 +11,7 @@ Writes:
 
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -60,11 +61,24 @@ class _HTMLStripper(HTMLParser):
         return " ".join("".join(self._parts).split())
 
 
-def strip_html(html_str):
-    """Strip HTML tags and collapse whitespace. Returns plain text."""
+def _html_to_text(html_str):
+    """Convert HTML to plain text, stripping tags and collapsing whitespace."""
     if not html_str:
         return ""
-    import re
+    cleaned = re.sub(r'<style[^>]*>.*?</style>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
+    cleaned = re.sub(r'<script[^>]*>.*?</script>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+    s = _HTMLStripper()
+    try:
+        s.feed(cleaned)
+        return s.get_text().strip()
+    except Exception:
+        return html_str
+
+
+def strip_html(html_str):
+    """Strip HTML tags, remove quoted reply chains, and collapse whitespace. Returns plain text."""
+    if not html_str:
+        return ""
     # Remove <style> and <script> blocks before parsing (belt and suspenders)
     cleaned = re.sub(r'<style[^>]*>.*?</style>', '', html_str, flags=re.DOTALL | re.IGNORECASE)
     cleaned = re.sub(r'<script[^>]*>.*?</script>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
@@ -80,6 +94,101 @@ def strip_html(html_str):
         return text.strip()
     except Exception:
         return html_str
+
+
+def extract_thread_messages(html_str, parent_direction):
+    """Extract individual messages from an email thread's quoted replies.
+
+    GHL often does not create separate message records for inbound email replies —
+    they only appear as quoted text (gmail_quote / blockquote) inside the outbound
+    reply. This function parses the thread and returns a list of embedded messages.
+
+    Returns list of dicts: [{"body": str, "direction": str, "sender_hint": str}]
+    The list does NOT include the top-level message (caller handles that).
+    """
+    if not html_str:
+        return []
+
+    thread_msgs = []
+
+    # The attribution line format in actual GHL HTML is:
+    # On Mon, Mar 9, 2026 at 10:43 AM Patricia hernandez &lt;<a href="mailto:email">email</a>&gt; wrote:<br>
+    # Or Spanish: El mar, 3 mar 2026 a las 9:51, <a href="mailto:email">email</a> escribió:<br>
+    # The email is inside an <a> tag with mailto:, and the angle brackets are &lt;/&gt;
+
+    # Pattern approach: find "wrote:" or "escribió:" preceded by attribution text,
+    # then extract the sender email from the nearby mailto: link
+    attr_pattern = re.compile(
+        r'(?:On\s+\w{3},\s+\w{3}\s+\d{1,2},\s+\d{4}\s+at\s+[\d:]+\s*[AP]M'  # Gmail
+        r'|On\s+\w{3}\s+\d{1,2},\s+\d{4},?\s+at\s+[\d:]+\s*[AP]M'            # Apple
+        r'|El\s+\w{3},\s+\d{1,2}\s+\w{3}\s+\d{4}\s+a\s+las\s+[\d:]+)'        # Spanish
+        r'(.*?)'  # capture everything between date and wrote (contains sender)
+        r'(?:wrote|escribi[oó])\s*:\s*(?:<br\s*/?>)?',
+        re.IGNORECASE | re.DOTALL)
+
+    for match in attr_pattern.finditer(html_str):
+        sender_block = match.group(1)
+
+        # Extract email from mailto: link in the sender block
+        mailto_match = re.search(r'mailto:([^"\'>\s]+)', sender_block, re.IGNORECASE)
+        if not mailto_match:
+            # Try plain text email pattern
+            mailto_match = re.search(r'[\w.+-]+@[\w.-]+\.\w+', sender_block)
+        if not mailto_match:
+            continue
+        sender_email = mailto_match.group(1) if mailto_match.lastindex else mailto_match.group(0)
+
+        # Extract sender name: text before &lt; or < in the sender block
+        name_text = _html_to_text(sender_block).strip()
+        # Remove email and angle brackets from name
+        name_text = re.sub(r'[<>].*', '', name_text).strip().rstrip(',').strip()
+        if not name_text:
+            name_text = sender_email.split('@')[0]
+
+        # Get the content after this attribution — it's in the next blockquote
+        after_attr = html_str[match.end():]
+        # Find the blockquote content (first blockquote after attribution)
+        bq_match = re.search(
+            r'<blockquote[^>]*>(.*?)(?:</blockquote>)',
+            after_attr, re.DOTALL | re.IGNORECASE)
+        if not bq_match:
+            continue
+
+        quoted_html = bq_match.group(1)
+        # Strip nested quotes from this block (we'll get them in their own iteration)
+        quoted_html = re.sub(r'<div\s+class="gmail_quote[^"]*".*', '', quoted_html, flags=re.DOTALL | re.IGNORECASE)
+        quoted_html = re.sub(r'<blockquote[^>]*>.*', '', quoted_html, flags=re.DOTALL | re.IGNORECASE)
+        # Also strip nested Apple Mail blockquotes
+        quoted_html = re.sub(r'<br><blockquote\s+type="cite".*', '', quoted_html, flags=re.DOTALL | re.IGNORECASE)
+
+        body = _html_to_text(quoted_html)
+        # Trim "Sent from my iPhone" and similar signatures
+        body = re.split(r'\s*Sent from my iPhone', body)[0].strip()
+        if not body:
+            continue
+
+        # Determine direction based on sender email.
+        # "via" senders (e.g. "Patricia via Fort Lauderdale Screen Printing
+        # <sales@email.fortlauderdalescreenprinting.com>") are inbound contacts
+        # whose replies are routed through the business email system.
+        is_via = ' via ' in name_text.lower()
+        is_business = any(domain in sender_email.lower() for domain in
+                         ['ftlprints.com', 'fortlauderdalescreenprinting.com',
+                          'email.fortlauderdalescreenprinting.com'])
+        if is_via:
+            direction = "inbound"
+        elif is_business:
+            direction = "outbound"
+        else:
+            direction = "inbound"
+
+        thread_msgs.append({
+            "body": body,
+            "direction": direction,
+            "sender_hint": f"{name_text} <{sender_email}>",
+        })
+
+    return thread_msgs
 
 
 def fetch_notes(contact_id, auth):
@@ -112,11 +221,18 @@ def fetch_notes(contact_id, auth):
             return []
 
 
-def fetch_email_body(message_id, auth):
+def fetch_email_body(message_id, auth, include_thread=False, parent_direction=None):
     """Fetch an individual email message to get its accurate body.
 
     The list endpoint often omits or corrupts email bodies (returns quoted
     thread text or empty body). The individual endpoint has the real HTML.
+
+    If include_thread=True, also extracts embedded thread messages from quoted
+    replies (GHL often doesn't create separate records for email replies).
+
+    Returns:
+        If include_thread=False: plain text body (str)
+        If include_thread=True: (plain_text_body, thread_messages_list)
     """
     url = f"{GHL_BASE}/conversations/messages/{message_id}"
     req = urllib.request.Request(url, headers={
@@ -131,45 +247,84 @@ def fetch_email_body(message_id, auth):
         # Response wraps message in {"message": {...}, "traceId": ...}
         msg = data.get("message", data)
         raw_body = msg.get("body", "")
-        if raw_body:
-            return strip_html(raw_body)
-        return ""
+        text = strip_html(raw_body) if raw_body else ""
+        if include_thread:
+            thread = extract_thread_messages(raw_body, parent_direction or "outbound") if raw_body else []
+            return text, thread
+        return text
     except Exception:
+        if include_thread:
+            return "", []
         return ""
 
 
-def fetch_messages(conversation_id, auth):
-    """Fetch messages for a conversation: outbound count, per-channel timestamps, and recent message bodies."""
+def _fetch_messages_page(conversation_id, auth, last_message_id=None):
+    """Fetch a single page of messages. Returns (raw_messages_list, next_cursor_id)."""
     url = f"{GHL_BASE}/conversations/{conversation_id}/messages?limit=100"
+    if last_message_id:
+        url += f"&lastMessageId={last_message_id}"
     req = urllib.request.Request(url, headers={
         "Authorization": auth,
         "Version": "2021-07-28",
         "Accept": "application/json",
         "User-Agent": "FTL-Prints-Pipeline/1.0",
     })
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        body = json.loads(resp.read())
+    # Messages may be nested: body["messages"]["messages"] or flat
+    raw = body.get("messages", body.get("data", []))
+    if isinstance(raw, dict):
+        messages = raw.get("messages", [])
+    else:
+        messages = raw
+    # Determine next cursor: use lastMessageId from response, or last message's id
+    next_cursor = body.get("lastMessageId")
+    if not next_cursor and messages:
+        next_cursor = messages[-1].get("id")
+    return messages, next_cursor
+
+
+def fetch_messages(conversation_id, auth):
+    """Fetch messages for a conversation: outbound count, per-channel timestamps, and recent message bodies.
+
+    Paginates through all messages (up to 500) so long email threads are not truncated.
+    """
+    MAX_PAGES = 5        # Up to 500 messages total
+    MAX_BODY_MSGS = 50   # Process bodies for up to 50 most recent messages
+    MAX_EMAIL_FETCHES = 40  # Fetch up to 40 email bodies individually
+
+    # Direction lives at top level for SMS/CALL, but in meta.email.direction for EMAIL
+    def get_direction(m):
+        d = m.get("direction")
+        if d:
+            return d
+        meta = m.get("meta")
+        if isinstance(meta, dict):
+            for v in meta.values():
+                if isinstance(v, dict) and "direction" in v:
+                    return v["direction"]
+        return None
+
     for attempt in range(2):
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                body = json.loads(resp.read())
-            # Messages may be nested: body["messages"]["messages"] or flat
-            raw = body.get("messages", body.get("data", []))
-            if isinstance(raw, dict):
-                messages = raw.get("messages", [])
-            else:
-                messages = raw
+            # Paginate to collect all messages
+            all_messages = []
+            cursor = None
+            for _page in range(MAX_PAGES):
+                page_msgs, next_cursor = _fetch_messages_page(
+                    conversation_id, auth, last_message_id=cursor)
+                if not page_msgs:
+                    break
+                all_messages.extend(page_msgs)
+                # Stop if we got fewer than a full page (no more messages)
+                if len(page_msgs) < 100:
+                    break
+                # Stop if cursor didn't advance (safety valve)
+                if next_cursor == cursor:
+                    break
+                cursor = next_cursor
 
-            # Direction lives at top level for SMS/CALL, but in meta.email.direction for EMAIL
-            def get_direction(m):
-                d = m.get("direction")
-                if d:
-                    return d
-                meta = m.get("meta")
-                if isinstance(meta, dict):
-                    for v in meta.values():
-                        if isinstance(v, dict) and "direction" in v:
-                            return v["direction"]
-                return None
-
+            messages = all_messages
             count = sum(1 for m in messages if get_direction(m) == "outbound")
 
             # Track most recent outbound timestamp per channel (direct only, not campaign)
@@ -190,27 +345,80 @@ def fetch_messages(conversation_id, auth):
                            or ts > channel_dates[channel_map[msg_type]]):
                     channel_dates[channel_map[msg_type]] = ts
 
-            # Extract up to 20 most recent message bodies (newest first).
+            # Extract message bodies for the most recent messages (newest first).
             # For emails, the list endpoint often omits or corrupts bodies,
-            # so we fetch individually for the most recent emails (max 10).
-            recent_messages = []
+            # so we fetch individually for accurate content.
+            # Also extract embedded thread messages that GHL doesn't create
+            # separate records for (common with Gmail reply chains).
+
+            # First pass: fetch all email bodies and extract thread messages.
+            # We need all main email bodies first so we can dedup thread messages
+            # against them (a thread message may duplicate an API message).
+            email_data = []  # [(index, text, thread_msgs)]
             email_fetches = 0
-            for m in messages[:20]:
+            for idx, m in enumerate(messages[:MAX_BODY_MSGS]):
+                msg_type = m.get("messageType", "")
+                if msg_type != "TYPE_EMAIL" or email_fetches >= MAX_EMAIL_FETCHES:
+                    continue
+                msg_id = m.get("id")
+                direction = get_direction(m) or "unknown"
+                text, thread_msgs = fetch_email_body(
+                    msg_id, auth, include_thread=True,
+                    parent_direction=direction) if msg_id else ("", [])
+                email_fetches += 1
+                email_data.append((idx, text, thread_msgs))
+
+            # Build dedup set from all main email bodies
+            seen_bodies = set()
+            for _, text, _ in email_data:
+                if text:
+                    seen_bodies.add(text[:100])
+
+            # Second pass: assemble messages in order, inserting thread messages
+            # after their parent email.
+            recent_messages = []
+            email_data_by_idx = {idx: (text, thread_msgs) for idx, text, thread_msgs in email_data}
+
+            for idx, m in enumerate(messages[:MAX_BODY_MSGS]):
                 direction = get_direction(m) or "unknown"
                 msg_type = m.get("messageType", "")
                 channel = CHANNEL_MAP_NAMES.get(msg_type, msg_type)
                 ts = m.get("dateAdded") or m.get("createdAt") or ""
 
-                if msg_type == "TYPE_EMAIL" and email_fetches < 10:
-                    # Email bodies from list endpoint are unreliable —
-                    # fetch individually for accurate content
-                    msg_id = m.get("id")
-                    text = fetch_email_body(msg_id, auth) if msg_id else ""
-                    email_fetches += 1
-                else:
-                    # SMS/call bodies are reliable from list endpoint
-                    text = m.get("body") or m.get("message") or ""
+                if idx in email_data_by_idx:
+                    text, thread_msgs = email_data_by_idx[idx]
 
+                    # Add the main message
+                    if text:
+                        if len(text) > 500:
+                            text = text[:500] + "..."
+                        recent_messages.append({
+                            "direction": direction,
+                            "channel": channel,
+                            "body": text,
+                            "date": ts,
+                        })
+
+                    # Add thread messages that GHL didn't create records for
+                    for tm in thread_msgs:
+                        body = tm["body"]
+                        if len(body) > 500:
+                            body = body[:500] + "..."
+                        # Skip if we already have this message (dedup by first 100 chars)
+                        if body[:100] in seen_bodies:
+                            continue
+                        seen_bodies.add(body[:100])
+                        recent_messages.append({
+                            "direction": tm["direction"],
+                            "channel": "email",
+                            "body": body,
+                            "date": ts,  # Use parent timestamp (thread msgs lack exact ts)
+                            "from_thread": True,
+                        })
+                    continue
+
+                # SMS/call bodies are reliable from list endpoint
+                text = m.get("body") or m.get("message") or ""
                 if len(text) > 500:
                     text = text[:500] + "..."
                 if not text:

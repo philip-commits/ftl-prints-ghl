@@ -93,14 +93,13 @@ Pipeline: "New Lead Pipeline"
 Pipeline ID: GeLwykvW1Fup6Z5oiKir
 
 Stages (in order):
-1. New Lead        — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
-2. In Progress     — 5ee824df-7708-4aba-9177-d5ac02dd6828
-3. Quote Sent      — 259ee5f4-5667-4797-948e-f36ec28c70a0
-4. Needs Attention — accf1eef-aa13-46c3-938d-f3ec6fbe498b
-5. Follow Up       — 336a5bee-cad2-400f-83fd-cae1bc837029
-6. Sale            — 1ab155c2-282d-45eb-bd43-1052489eb2a1
-7. Cooled Off      — 7ec748b8-920d-4bdb-bf09-74dd22d27846
-8. Unqualified     — b909061c-9141-45d7-b1e2-fd37432c3596
+1. New Lead      — 29fcf7b0-289c-44a4-ad25-1d1a0aea9063
+2. In Progress   — 5ee824df-7708-4aba-9177-d5ac02dd6828
+3. Quote Sent    — 336a5bee-cad2-400f-83fd-cae1bc837029
+4. Invoice Sent  — 259ee5f4-5667-4797-948e-f36ec28c70a0
+5. Sale          — 1ab155c2-282d-45eb-bd43-1052489eb2a1
+6. Cooled Off    — 7ec748b8-920d-4bdb-bf09-74dd22d27846
+7. Unqualified   — b909061c-9141-45d7-b1e2-fd37432c3596
 
 Location ID: iCyLg9rh8NtPpTfFCcGk
 ```
@@ -141,7 +140,7 @@ Parse the response and group opportunities by stage. For each opportunity, extra
 
 #### Phase 2: Fetch Conversations for Active Leads
 
-For opportunities in stages: New Lead, In Progress, Quote Sent, Needs Attention, Follow Up — fetch the conversation:
+For opportunities in stages: New Lead, In Progress, Quote Sent, Invoice Sent — fetch the conversation:
 
 ```
 Tool: mcp__ghl__conversations_search-conversation
@@ -219,11 +218,8 @@ For each lead, show:
 ### 📨 Quote Sent (X) — Awaiting Response
 [Leads with quotes out, when quote was sent, any follow-ups done]
 
-### ⚠️ Needs Attention (X)
-[Leads flagged for attention with reason]
-
-### 📞 Follow Up (X)
-[Leads in follow-up with last contact date and recommended action]
+### 🧾 Invoice Sent (X) — Awaiting Payment
+[Leads with invoices out, when invoice was sent, any follow-ups done]
 
 ### ✅ Recent Sales (X)
 [Sales from the last 7 days with value if available]
