@@ -118,6 +118,12 @@ const MoveIcon = () => (
     <path d="m12 5 7 7-7 7" />
   </svg>
 );
+const TaskIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M9 11l3 3L22 4" />
+    <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+  </svg>
+);
 const PhoneIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
@@ -209,6 +215,12 @@ function ComposeArea({
     action.smsMessage || action.noAnswerSms || "",
   );
   const [noteBody, setNoteBody] = useState("");
+  const [taskTitle, setTaskTitle] = useState("Follow Up");
+  const [taskDueDate, setTaskDueDate] = useState(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1);
+    return d.toISOString().slice(0, 10);
+  });
   const [moveStageId, setMoveStageId] = useState(
     STAGE_NAME_TO_ID[action.stage] || "",
   );
@@ -293,6 +305,29 @@ function ComposeArea({
       onSent(key, d.success ? "moved" : "failed");
       if (d.success && onStageMove) {
         onStageMove(STAGE_ID_TO_NAME[moveStageId] || action.stage);
+      }
+    } catch {
+      onSent(key, "failed");
+    }
+  }
+
+  async function createTask() {
+    const key = `${action.id}_task`;
+    onSent(key, "sending");
+    try {
+      const r = await fetch(`/api/task/${action.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskTitle,
+          dueDate: taskDueDate ? new Date(taskDueDate + "T12:00:00").toISOString() : undefined,
+        }),
+      });
+      const d = await r.json();
+      onSent(key, d.success ? "sent" : "failed");
+      if (d.success) {
+        setTaskTitle("");
+        setTaskDueDate("");
       }
     } catch {
       onSent(key, "failed");
@@ -392,6 +427,31 @@ function ComposeArea({
               </option>
             ))}
           </select>
+        </div>
+      )}
+      {openPanel === "task" && (
+        <div style={styles.composeArea}>
+          <div style={styles.composeHeader}>
+            <span style={styles.composeLabel}>Create Task</span>
+            <SendButton
+              label="Create"
+              sentLabel="Created ✓"
+              status={getStatus(`${action.id}_task`)}
+              onClick={createTask}
+            />
+          </div>
+          <input
+            value={taskTitle}
+            onChange={(e) => setTaskTitle(e.target.value)}
+            placeholder="Follow Up"
+            style={styles.input}
+          />
+          <input
+            type="date"
+            value={taskDueDate}
+            onChange={(e) => setTaskDueDate(e.target.value)}
+            style={styles.input}
+          />
         </div>
       )}
     </>
@@ -634,6 +694,10 @@ function ActionCard({
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button style={styles.iconBtn} onClick={() => togglePanel("note")} title="Add note"><NoteIcon /></button>
             {noteSent && <span style={styles.checkBadge}>&#10003;</span>}
+          </span>
+          <span style={{ position: "relative", display: "inline-flex" }}>
+            <button style={styles.iconBtn} onClick={() => togglePanel("task")} title="Create task"><TaskIcon /></button>
+            {getStatus(`${action.id}_task`) === "sent" && <span style={styles.checkBadge}>&#10003;</span>}
           </span>
           <span style={{ position: "relative", display: "inline-flex" }}>
             <button style={styles.iconBtn} onClick={() => togglePanel("move")} title="Move stage"><MoveIcon /></button>

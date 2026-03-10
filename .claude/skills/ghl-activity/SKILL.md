@@ -41,12 +41,12 @@ Read: /tmp/ftl_activity.json
 
 ### Outbound Messages
 
-| Channel | Manual | Automated | Total |
-|---------|--------|-----------|-------|
-| Email   | {n}    | {n}       | {n}   |
-| SMS     | {n}    | {n}       | {n}   |
-| Call    | {n}    | {n}       | {n}   |
-| **Total** | **{n}** | **{n}** | **{n}** |
+| Channel | API | Manual | Automated | Total |
+|---------|-----|--------|-----------|-------|
+| Email   | {n} | {n}    | {n}       | {n}   |
+| SMS     | {n} | {n}    | {n}       | {n}   |
+| Call    | {n} | {n}    | {n}       | {n}   |
+| **Total** | **{n}** | **{n}** | **{n}** | **{n}** |
 
 ### Inbound Messages
 
@@ -71,6 +71,6 @@ Read: /tmp/ftl_activity.json
 - Message source classification:
   - **Manual** = sent by a human via the GHL app (source=app or userId present)
   - **Automated** = sent by a workflow (source=workflow)
-  - **API** = sent via API integration (source=api) — counted under automated
+  - **API** = sent via API integration (source=api) — shown as its own column
 - The script reuses OAuth2 auth from the `/ghl` skill (`ghl_auth.py`)
 - Per-contact detail is available in `/tmp/ftl_activity.json` if needed

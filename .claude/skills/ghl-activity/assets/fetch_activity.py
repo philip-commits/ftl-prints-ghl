@@ -272,9 +272,9 @@ def build_summary(contacts_with_activity, date_str, total_opps, fetched_at):
     """Build the output JSON structure from per-contact activity."""
     totals = {
         "outbound": {
-            "email": {"manual": 0, "automated": 0, "total": 0},
-            "sms": {"manual": 0, "automated": 0, "total": 0},
-            "call": {"manual": 0, "automated": 0, "total": 0},
+            "email": {"api": 0, "manual": 0, "automated": 0, "total": 0},
+            "sms": {"api": 0, "manual": 0, "automated": 0, "total": 0},
+            "call": {"api": 0, "manual": 0, "automated": 0, "total": 0},
         },
         "inbound": {"email": 0, "sms": 0, "call": 0},
         "stageChanges": 0,
@@ -291,7 +291,9 @@ def build_summary(contacts_with_activity, date_str, total_opps, fetched_at):
             if direction == "outbound" and channel in totals["outbound"]:
                 bucket = totals["outbound"][channel]
                 bucket["total"] += 1
-                if source == "manual":
+                if source == "api":
+                    bucket["api"] += 1
+                elif source == "manual":
                     bucket["manual"] += 1
                 else:
                     bucket["automated"] += 1
@@ -321,6 +323,7 @@ def print_summary(result):
 
     total_out = ob["email"]["total"] + ob["sms"]["total"] + ob["call"]["total"]
     total_in = ib["email"] + ib["sms"] + ib["call"]
+    total_api = ob["email"]["api"] + ob["sms"]["api"] + ob["call"]["api"]
     total_manual = ob["email"]["manual"] + ob["sms"]["manual"] + ob["call"]["manual"]
     total_auto = ob["email"]["automated"] + ob["sms"]["automated"] + ob["call"]["automated"]
 
@@ -334,7 +337,7 @@ def print_summary(result):
     RESET = "\033[0m"
     WHITE = "\033[97m"
 
-    W = 52  # box width (inner)
+    W = 62  # box width (inner)
 
     def box_top():
         print(f"  {DIM}{'─' * (W + 2)}{RESET}")
@@ -359,21 +362,23 @@ def print_summary(result):
     print()
 
     # Outbound table
-    print(f"  {BOLD}{CYAN}OUTBOUND{RESET}  {DIM}{total_out} total  ({total_manual} manual · {total_auto} automated){RESET}")
+    print(f"  {BOLD}{CYAN}OUTBOUND{RESET}  {DIM}{total_out} total  ({total_api} api · {total_manual} manual · {total_auto} automated){RESET}")
     box_top()
-    box_row(f"  {'Channel':<10}  {'Manual':>8}  {'Auto':>8}  {'Total':>8}")
+    box_row(f"  {'Channel':<10}  {'API':>8}  {'Manual':>8}  {'Auto':>8}  {'Total':>8}")
     box_sep()
     for channel, key in [("Email", "email"), ("SMS", "sms"), ("Call", "call")]:
+        ap = ob[key]["api"]
         m = ob[key]["manual"]
         a = ob[key]["automated"]
         tot = ob[key]["total"]
         if tot == 0:
-            box_row(f"  {DIM}{channel:<10}  {m:>8}  {a:>8}  {tot:>8}{RESET}")
+            box_row(f"  {DIM}{channel:<10}  {ap:>8}  {m:>8}  {a:>8}  {tot:>8}{RESET}")
         else:
+            ap_str = f"{BLUE}{ap}{RESET}" if ap > 0 else f"{DIM}{ap}{RESET}"
             m_str = f"{GREEN}{m}{RESET}" if m > 0 else f"{DIM}{m}{RESET}"
             a_str = f"{YELLOW}{a}{RESET}" if a > 0 else f"{DIM}{a}{RESET}"
             t_str = f"{WHITE}{BOLD}{tot}{RESET}"
-            box_row(f"  {channel:<10}  {m_str:>19}  {a_str:>19}  {t_str:>15}")
+            box_row(f"  {channel:<10}  {ap_str:>19}  {m_str:>19}  {a_str:>19}  {t_str:>15}")
     box_bottom()
 
     # Inbound table

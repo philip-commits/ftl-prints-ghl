@@ -1,4 +1,4 @@
-import { fetchOpportunities, autoMoveNewLeads } from "@/lib/ghl/pipeline";
+import { fetchOpportunities, reactivateCooledOffLeads, autoMoveNewLeads } from "@/lib/ghl/pipeline";
 import { fetchAllConversations } from "@/lib/ghl/conversations";
 import { enrichLeads } from "@/lib/ghl/enrich";
 import { generateRecommendations } from "@/lib/claude/recommendations";
@@ -8,7 +8,12 @@ async function main() {
   const start = Date.now();
   console.log("[pipeline] Starting daily pipeline...");
 
-  // Step 1: Fetch opportunities
+  // Step 0: Reactivate Cooled Off leads with upcoming tasks
+  console.log("[pipeline] Checking Cooled Off leads for upcoming tasks...");
+  const reactivated = await reactivateCooledOffLeads();
+  if (reactivated > 0) console.log(`[pipeline] Reactivated ${reactivated} lead(s) from Cooled Off`);
+
+  // Step 1: Fetch opportunities (reactivated leads are now In Progress)
   console.log("[pipeline] Fetching opportunities...");
   const { active, inactiveSummary } = await fetchOpportunities();
   console.log(`[pipeline] Found ${active.length} active leads`);

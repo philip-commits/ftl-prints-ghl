@@ -78,6 +78,80 @@ export async function fetchOpportunities(): Promise<{
  * Mutates the enriched lead's stage/stageId in place so downstream
  * processing sees the correct stage.
  */
+/**
+ * Reactivate Cooled Off leads that have an incomplete task due within 3 days.
+ * Moves them back to In Progress and marks the task(s) completed so the
+ * regular pipeline picks them up.
+ */
+export async function reactivateCooledOffLeads(): Promise<number> {
+  const cooledOffId = STAGE_IDS["Cooled Off"];
+  const inProgressId = STAGE_IDS["In Progress"];
+
+  const resp = await ghlFetch<SearchResponse>({
+    path: `/opportunities/search?pipeline_id=${PIPELINE_ID}&location_id=${LOCATION_ID}&limit=100`,
+  });
+
+  const opportunities = resp.opportunities || resp.data?.opportunities || [];
+  const cooledOff = opportunities.filter(o => o.pipelineStageId === cooledOffId);
+
+  if (!cooledOff.length) return 0;
+
+  let reactivated = 0;
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const horizon = new Date(todayStart.getTime() + 3 * 86400000);
+
+  for (const opp of cooledOff) {
+    const contactId = opp.contact?.id;
+    if (!contactId) continue;
+
+    const taskResp = await ghlFetch<{
+      tasks: Array<{ id: string; title: string; dueDate: string; completed: boolean }>;
+    }>({
+      path: `/contacts/${contactId}/tasks`,
+    });
+
+    const dueSoon = (taskResp.tasks || []).filter(t => {
+      if (t.completed) return false;
+      const due = new Date(t.dueDate);
+      return due >= todayStart && due <= horizon;
+    });
+
+    if (!dueSoon.length) continue;
+
+    // Move to In Progress
+    await ghlFetch({
+      path: `/opportunities/${opp.id}`,
+      method: "PUT",
+      body: { pipelineStageId: inProgressId },
+    });
+
+    // Mark due-soon tasks as completed
+    const taskTitles: string[] = [];
+    for (const task of dueSoon) {
+      await ghlFetch({
+        path: `/contacts/${contactId}/tasks/${task.id}`,
+        method: "PUT",
+        body: { title: task.title, dueDate: task.dueDate, completed: true },
+      });
+      taskTitles.push(task.title);
+    }
+
+    // Add a note so the recommendation engine knows why this lead was reactivated
+    const taskList = taskTitles.map(t => `"${t}"`).join(", ");
+    await ghlFetch({
+      path: `/contacts/${contactId}/notes`,
+      method: "POST",
+      body: { body: `Reactivated from Cooled Off — follow-up task ${taskList} was due. Ready for outreach.` },
+    });
+
+    reactivated++;
+    console.log(`[reactivate] ${opp.contact?.name}: Cooled Off → In Progress (task due soon)`);
+  }
+
+  return reactivated;
+}
+
 export async function autoMoveNewLeads(leads: EnrichedLead[]): Promise<number> {
   const inProgressId = STAGE_IDS["In Progress"];
   let moved = 0;

@@ -509,6 +509,8 @@ Note: With the 1-day follow-up threshold, the `noAction` array will typically be
 
 Action IDs must be sequential integers starting at 1. Every active lead must appear in either `actions` or `noAction` — no leads silently dropped.
 
+**Categorization rule:** A lead goes into `noAction` ONLY if its `suggestedAction` is `"none"` (after cooldown). ALL other `suggestedAction` values — including `"move"`, `"reply"`, `"outreach"`, `"call"`, `"follow_up_email"`, `"final_attempt_email"`, `"high_value_followup"` — MUST go into `actions`, regardless of priority level. A `"move"` action with `priority: "info"` is still an action that requires Philip's confirmation, not "no action needed".
+
 ### Phase 4: Launch Dashboard
 
 The server and HTML dashboard are **static assets** in `.claude/skills/ghl/assets/`. Do NOT write or regenerate `server.py` or `dashboard.html`. The dashboard fetches action data dynamically from `GET /api/actions` which serves `/tmp/ftl_actions.json`.
