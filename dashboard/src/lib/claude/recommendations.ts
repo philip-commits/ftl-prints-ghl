@@ -23,7 +23,7 @@ If the customer's last message indicates they're pausing or deciding, you MUST r
 
 **a) Soft no / postponed** — "not right now," "postpone," "timeline shifted," "will circle back when ready," "not in the budget," "maybe later":
 → MUST return: {"action": {"actionType": "move", "targetStageId": "7ec748b8-920d-4bdb-bf09-74dd22d27846", "priority": "info", ...}}
-→ recommendation MUST mention: "Create a 'Follow up' task for 30-60 days out"
+→ recommendation MUST mention: "Move to Cooled Off and create a 'Follow up' task for 30-60 days out"
 → Do NOT return noAction. A postponement requires moving to Cooled Off.
 
 **b) Still deciding / short delay** — "checking with my team," "need a head count," "waiting on approval," "let me confirm sizes":
