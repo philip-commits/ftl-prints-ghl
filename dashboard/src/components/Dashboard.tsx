@@ -222,13 +222,13 @@ function ComposeArea({
     return d.toISOString().slice(0, 10);
   });
   const [moveStageId, setMoveStageId] = useState(
-    STAGE_NAME_TO_ID[action.stage] || "",
+    action.targetStageId || STAGE_NAME_TO_ID[action.stage] || "",
   );
 
   const getStatus = (key: string): "ready" | "sending" | "sent" | "failed" => {
     const s = sentStatus[key];
     if (!s) return "ready";
-    return s.status === "sent" || s.status === "noted" || s.status === "moved"
+    return s.status === "sent" || s.status === "noted" || s.status === "moved" || s.status.startsWith("moved:")
       ? "sent"
       : (s.status as "ready" | "sending" | "sent" | "failed");
   };
@@ -302,9 +302,10 @@ function ComposeArea({
         body: JSON.stringify({ targetStageId: moveStageId }),
       });
       const d = await r.json();
-      onSent(key, d.success ? "moved" : "failed");
+      const newStageName = STAGE_ID_TO_NAME[moveStageId] || action.stage;
+      onSent(key, d.success ? `moved:${newStageName}` : "failed");
       if (d.success && onStageMove) {
-        onStageMove(STAGE_ID_TO_NAME[moveStageId] || action.stage);
+        onStageMove(newStageName);
       }
     } catch {
       onSent(key, "failed");
@@ -620,7 +621,7 @@ function ActionCard({
   const getStatus = (key: string): "ready" | "sending" | "sent" | "failed" => {
     const s = sentStatus[key];
     if (!s) return "ready";
-    return s.status === "sent" || s.status === "noted" || s.status === "moved"
+    return s.status === "sent" || s.status === "noted" || s.status === "moved" || s.status.startsWith("moved:")
       ? "sent"
       : (s.status as "ready" | "sending" | "sent" | "failed");
   };
@@ -825,10 +826,19 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       .then((s) => {
         setSentStatus(s);
         const dismissedIds = new Set<number>();
-        for (const [id, info] of Object.entries(s) as [string, { status: string }][]) {
-          if (info.status === "dismissed") dismissedIds.add(parseInt(id, 10));
+        const restoredOverrides: Record<number, string> = {};
+        for (const [key, info] of Object.entries(s) as [string, { status: string }][]) {
+          if (info.status === "dismissed") dismissedIds.add(parseInt(key, 10));
+          if (key.endsWith("_move") && info.status.startsWith("moved:")) {
+            const actionId = parseInt(key.replace("_move", ""), 10);
+            const stageValue = info.status.replace("moved:", "");
+            // API stores stage ID, resolve to name
+            const stageName = STAGE_ID_TO_NAME[stageValue] || stageValue;
+            if (!isNaN(actionId) && stageName) restoredOverrides[actionId] = stageName;
+          }
         }
         setDismissed(dismissedIds);
+        setStageOverrides((prev) => ({ ...restoredOverrides, ...prev }));
       })
       .catch(() => {});
   }, []);

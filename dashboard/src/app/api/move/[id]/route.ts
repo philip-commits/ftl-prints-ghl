@@ -40,7 +40,7 @@ export async function POST(
     });
 
     const sent = await readSentStatus();
-    sent[`${id}_move`] = { status: "moved", ts: Date.now() };
+    sent[`${id}_move`] = { status: `moved:${targetStageId}`, ts: Date.now() };
     await writeSentStatus(sent);
 
     return NextResponse.json({ success: true });
