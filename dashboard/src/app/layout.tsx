@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "FTL Prints — GHL Dashboard",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
