@@ -26,12 +26,25 @@ export async function POST(
   }
 
   try {
+    const effectiveDueDate = dueDate || new Date(Date.now() + 7 * 86400000).toISOString();
+
+    // Check for existing task with same title and due date
+    const existing = await ghlFetch<{ tasks: Array<{ title: string; dueDate: string; completed: boolean }> }>({
+      path: `/contacts/${action.contactId}/tasks`,
+    });
+    const isDuplicate = (existing.tasks || []).some(
+      (t) => t.title === title && t.dueDate === effectiveDueDate && !t.completed,
+    );
+    if (isDuplicate) {
+      return NextResponse.json({ success: true, note: "Task already exists" });
+    }
+
     await ghlFetch({
       path: `/contacts/${action.contactId}/tasks`,
       method: "POST",
       body: {
         title,
-        dueDate: dueDate || new Date(Date.now() + 7 * 86400000).toISOString(),
+        dueDate: effectiveDueDate,
         completed: false,
       },
     });

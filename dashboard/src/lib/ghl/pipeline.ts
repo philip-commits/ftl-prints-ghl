@@ -114,7 +114,8 @@ export async function reactivateCooledOffLeads(): Promise<number> {
     const dueSoon = (taskResp.tasks || []).filter(t => {
       if (t.completed) return false;
       const due = new Date(t.dueDate);
-      return due >= todayStart && due <= horizon;
+      // Include overdue tasks (due before today) and tasks due within 3 days
+      return due <= horizon;
     });
 
     if (!dueSoon.length) continue;
@@ -138,6 +139,7 @@ export async function reactivateCooledOffLeads(): Promise<number> {
     }
 
     // Add a note so the recommendation engine knows why this lead was reactivated
+    // NOTE: enrich.ts isReactivated() depends on this "Reactivated from Cooled Off" prefix
     const taskList = taskTitles.map(t => `"${t}"`).join(", ");
     await ghlFetch({
       path: `/contacts/${contactId}/notes`,

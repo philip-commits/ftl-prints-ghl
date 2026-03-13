@@ -23,8 +23,7 @@ export default function LoginForm() {
       });
 
       if (resp.ok) {
-        router.push("/");
-        router.refresh();
+        window.location.href = "/";
       } else {
         const data = await resp.json();
         setError(data.error || "Login failed");

@@ -678,6 +678,17 @@ function ActionCard({
           >
             {effectiveStage}
           </span>
+          {action.reactivated && (
+            <span
+              style={{
+                ...styles.badge,
+                background: "#3b0764",
+                color: "#c084fc",
+              }}
+            >
+              Reactivated
+            </span>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ position: "relative", display: "inline-flex" }}>

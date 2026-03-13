@@ -3,6 +3,10 @@ import { fetchAllConversations } from "@/lib/ghl/conversations";
 import { enrichLeads } from "@/lib/ghl/enrich";
 import { generateRecommendations } from "@/lib/claude/recommendations";
 import { writeDashboardData, writeSentStatus } from "@/lib/blob/store";
+import { writeFileSync } from "fs";
+import { resolve } from "path";
+
+const LOCAL_MODE = process.argv.includes("--local");
 
 async function main() {
   const start = Date.now();
@@ -44,16 +48,23 @@ async function main() {
   );
 
   // Step 5: Write dashboard data
-  console.log("[pipeline] Writing dashboard data...");
-  await writeDashboardData({
+  const dashboardData = {
     actions,
     noAction,
     inactiveSummary,
     generatedAt: new Date().toISOString(),
-  });
+  };
 
-  // Step 6: Reset sent status
-  await writeSentStatus({});
+  if (LOCAL_MODE) {
+    const outPath = resolve(__dirname, "../public/local-dashboard-data.json");
+    writeFileSync(outPath, JSON.stringify(dashboardData, null, 2));
+    console.log(`[pipeline] Wrote local data to ${outPath}`);
+  } else {
+    console.log("[pipeline] Writing dashboard data to blob...");
+    await writeDashboardData(dashboardData);
+    // Step 6: Reset sent status
+    await writeSentStatus({});
+  }
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
   console.log(`[pipeline] Done in ${elapsed}s`);

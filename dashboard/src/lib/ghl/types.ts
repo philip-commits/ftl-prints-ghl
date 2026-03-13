@@ -93,6 +93,7 @@ export interface EnrichedLead extends ParsedLead {
   suggestedAction: string;
   suggestedPriority: string;
   hint: string;
+  reactivated: boolean;
 }
 
 export interface ActionItem {
@@ -120,6 +121,7 @@ export interface ActionItem {
   noAnswerEmail?: string;
   targetStageId?: string;
   international: boolean;
+  reactivated: boolean;
 }
 
 export interface NoActionItem {

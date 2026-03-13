@@ -53,6 +53,10 @@ function parseTimestamp(ts: string | number | null | undefined): Date | null {
 }
 
 
+function isReactivated(notes: NoteEntry[]): boolean {
+  return notes.some(n => n.body.startsWith("Reactivated from Cooled Off"));
+}
+
 function getMissingInfo(lead: ParsedLead): string[] {
   const missing: string[] = [];
   for (const field of INFO_FIELDS) {
@@ -229,6 +233,15 @@ export function enrichLeads(
 
     let [action, priority, hint] = decideAction(enriched);
     [action, priority, hint] = applyCooldown(enriched, action, priority, hint);
+
+    enriched.reactivated = isReactivated(enriched.notes);
+
+    // Reactivated leads must not be suppressed by cooldown
+    if (enriched.reactivated && action === "none") {
+      action = "outreach";
+      priority = "high";
+      hint = "Reactivated from Cooled Off — re-engagement outreach needed";
+    }
 
     enriched.suggestedAction = action;
     enriched.suggestedPriority = priority;

@@ -18,7 +18,16 @@ Read the conversation history and notes, then apply these rules IN ORDER. Stop a
 ### 1. NEEDS REPLY (high priority)
 If needsReply=true (unread inbound message) → return action: "reply". Answer their question and ask for whatever info is still missing.
 
-### 2. BALL IN THEIR COURT — HARD OVERRIDE (never noAction)
+### 2. REACTIVATED LEAD (reactivated=true) — HARD OVERRIDE
+This lead was in Cooled Off and a scheduled follow-up task brought it back. The system already decided this lead deserves another chance — your job is to write the re-engagement outreach, NOT to second-guess the reactivation.
+→ NEVER return action: "move" (especially not back to Cooled Off). NEVER return noAction.
+→ Ignore prior attempt counts and days without response — those happened BEFORE the lead was cooled off.
+→ return action: "outreach" (high priority). MUST include all channels: smsMessage, subject, message, noAnswerSms, noAnswerSubject, noAnswerEmail.
+→ Messages: warm re-engagement tone — "just checking in," "following up on our conversation from [date]," "you mentioned [specific detail] — wanted to see if now is a better time"
+→ Reference specific conversation details (what they wanted, prices quoted, why they paused)
+→ Tone: warm, no-pressure reconnection — NOT a cold first contact
+
+### 3. BALL IN THEIR COURT — HARD OVERRIDE (never noAction)
 If the customer's last message indicates they're pausing or deciding, you MUST return an action. This overrides cooldown, suggestedAction="none", and everything else.
 
 **a) Soft no / postponed** — "not right now," "postpone," "timeline shifted," "will circle back when ready," "not in the budget," "maybe later":
@@ -31,32 +40,32 @@ If the customer's last message indicates they're pausing or deciding, you MUST r
 → recommendation: follow up in a few days to a week if no response
 → Do NOT return noAction. Do NOT move to Cooled Off — they're still interested.
 
-### 3. ALREADY PAID / ORDER PLACED
+### 4. ALREADY PAID / ORDER PLACED
 If conversation shows payment or order confirmation → return action: "move" to Sale (1ab155c2-282d-45eb-bd43-1052489eb2a1).
 
-### 4. CANCELED / OUT OF SCOPE
+### 5. CANCELED / OUT OF SCOPE
 If customer explicitly canceled, went with someone else, or project is out of scope → return action: "move" to Cooled Off or Unqualified.
 
-### 5. NO CONTACT INFO
+### 6. NO CONTACT INFO
 If lead has no email AND no phone → return noAction with reason.
 
-### 6. FOLLOW-UP DATE IN NOTES
+### 7. FOLLOW-UP DATE IN NOTES
 If notes specify a future follow-up date that hasn't arrived yet → return noAction until that date.
 
-### 7. NEEDS FIRST OUTREACH
+### 8. NEEDS FIRST OUTREACH
 If stage is New Lead OR hasManualOutreach=false (automated welcome messages don't count) → return action: "outreach" (high). Always include both SMS + email. Add call fields if the lead mentions urgency.
 
-### 8. WRONG STAGE — recommend move
+### 9. WRONG STAGE — recommend move
 Check if the lead's stage matches the conversation:
 - Quote/pricing was sent but stage is New Lead or In Progress → recommend move to Quote Sent (336a5bee-cad2-400f-83fd-cae1bc837029)
 - Customer accepted quote but stage isn't Invoice Sent → recommend move to Invoice Sent (259ee5f4-5667-4797-948e-f36ec28c70a0)
 - New Lead with outbound messages → auto-move to In Progress may have failed, mention it
 - Unqualified signals (budget "$0-$149" AND quantity 1-2 items) → mention in recommendation
 
-### 9. COOLDOWN — contacted recently
+### 10. COOLDOWN — contacted recently
 If suggestedAction="none" with a cooldown hint AND none of the above rules matched → return noAction. The lead was just contacted and needs time to respond.
 
-### 10. STAGE-SPECIFIC FOLLOW-UP
+### 11. STAGE-SPECIFIC FOLLOW-UP
 If none of the above matched, follow the stage strategy:
 
 **In Progress** (fixed cadence if no response):
@@ -163,6 +172,7 @@ async function generateForLead(
     hint: lead.hint,
     conversationHistory: lead.conversationHistory,
     notes: lead.notes,
+    reactivated: lead.reactivated,
   };
 
   const today = new Date().toLocaleDateString("en-US", {
@@ -272,6 +282,21 @@ export async function generateRecommendations(
       action.conversationHistory = lead.conversationHistory;
       action.notes = lead.notes;
       action.international = lead.isInternational;
+      action.reactivated = lead.reactivated;
+
+      // Normalize Claude's inconsistent field names — it sometimes nests
+      // email fields as { subject, message } under "email" or "message"
+      const raw = result.action as Record<string, unknown>;
+      const emailObj = (typeof raw.email === "object" && raw.email !== null ? raw.email : null) as Record<string, string> | null;
+      const msgObj = (typeof raw.message === "object" && raw.message !== null ? raw.message : null) as Record<string, string> | null;
+      const nested = emailObj || msgObj;
+      if (nested) {
+        if (!action.subject) action.subject = nested.subject || nested.emailSubject;
+        if (!action.message || typeof action.message !== "string") action.message = nested.message || nested.body;
+      }
+      if (!action.message && typeof raw.email === "string") action.message = raw.email;
+      if (!action.subject && typeof raw.emailSubject === "string") action.subject = raw.emailSubject;
+
       actions.push(action);
     } else if (result.noAction) {
       const item = result.noAction as NoActionItem;
