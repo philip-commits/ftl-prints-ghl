@@ -80,6 +80,7 @@ export interface EnrichedLead extends ParsedLead {
   hasSizes: boolean;
   hasProjectDetails: boolean;
   needsReply: boolean;
+  lastMessageType: string | null;
   hasManualOutreach: boolean;
   daysSinceLastContact: number | null;
   daysSinceLastCall: number | null;

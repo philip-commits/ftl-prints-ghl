@@ -97,6 +97,7 @@ function enrichFromOpportunity(lead: ParsedLead): EnrichmentFields {
 
 interface ConvoFields {
   needsReply: boolean;
+  lastMessageType: string | null;
   hasManualOutreach: boolean;
   daysSinceLastContact: number | null;
   daysSinceLastCall: number | null;
@@ -113,6 +114,7 @@ function enrichFromConversation(convo: ConversationMeta | null): ConvoFields {
   if (!convo) {
     return {
       needsReply: false,
+      lastMessageType: null,
       hasManualOutreach: false,
       daysSinceLastContact: null,
       daysSinceLastCall: null,
@@ -150,6 +152,7 @@ function enrichFromConversation(convo: ConversationMeta | null): ConvoFields {
   return {
     needsReply:
       (convo.unreadCount || 0) > 0 && convo.lastMessageDirection === "inbound",
+    lastMessageType: convo.lastMessageType || null,
     hasManualOutreach: convo.lastOutboundMessageAction === "manual",
     daysSinceLastContact: daysSince,
     daysSinceLastCall: channelDays.daysSinceLastCall,

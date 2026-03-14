@@ -17,6 +17,8 @@ Read the conversation history and notes, then apply these rules IN ORDER. Stop a
 
 ### 1. NEEDS REPLY (high priority)
 If needsReply=true (unread inbound message) → return action: "reply". Answer their question and ask for whatever info is still missing.
+- Check lastMessageType and conversationHistory for "[Inbound call]" entries. If the customer CALLED IN, prioritize calling them back: return actionType "call" with noAnswerSms, noAnswerSubject, noAnswerEmail drafts. The label should say "Call back" not "Reply to message."
+- If the inbound was SMS or email, reply via the same channel they used.
 
 ### 2. REACTIVATED LEAD (reactivated=true) — HARD OVERRIDE
 This lead was in Cooled Off and a scheduled follow-up task brought it back. The system already decided this lead deserves another chance — your job is to write the re-engagement outreach, NOT to second-guess the reactivation.
@@ -160,6 +162,7 @@ async function generateForLead(
     isInternational: lead.isInternational,
     missingInfo: lead.missingInfo,
     needsReply: lead.needsReply,
+    lastMessageType: lead.lastMessageType,
     hasManualOutreach: lead.hasManualOutreach,
     daysSinceLastContact: lead.daysSinceLastContact,
     daysSinceLastCall: lead.daysSinceLastCall,

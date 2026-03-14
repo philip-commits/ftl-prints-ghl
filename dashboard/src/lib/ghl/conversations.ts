@@ -120,7 +120,10 @@ async function fetchMessages(conversationId: string): Promise<MessagesResult> {
       const ts = m.dateAdded || m.createdAt || "";
 
       let text: string;
-      if (msgType === "TYPE_EMAIL" && emailFetches < 10) {
+      if (msgType === "TYPE_CALL") {
+        // Calls have no body — synthesize one so they appear in conversation history
+        text = direction === "inbound" ? "[Inbound call]" : "[Outbound call]";
+      } else if (msgType === "TYPE_EMAIL" && emailFetches < 10) {
         text = m.id ? await fetchEmailBody(m.id) : "";
         emailFetches++;
       } else {
