@@ -755,12 +755,14 @@ function Sidebar({
   onNavigate,
   noActionCount,
   inactiveCount,
+  stageOverrides,
 }: {
   actions: ActionItem[];
   activeId: string | null;
   onNavigate: (id: string) => void;
   noActionCount: number;
   inactiveCount: number;
+  stageOverrides: Record<number, string>;
 }) {
   const sorted = [...actions].sort((a, b) =>
     a.contactName.localeCompare(b.contactName, "en", { sensitivity: "base" }),
@@ -774,13 +776,16 @@ function Sidebar({
       {sorted.map((a) => {
         const itemId = `lead-${a.id}`;
         const isActive = activeId === itemId;
+        const stage = stageOverrides[a.id] || a.stage;
+        const stageColor = a.reactivated ? "#c084fc" : (BADGE_COLORS[stage]?.color || "#94a3b8");
         return (
           <button
             key={a.id}
             title={a.contactName}
             style={{
               ...styles.sidebarItem,
-              ...(isActive ? styles.sidebarItemActive : {}),
+              borderLeftColor: stageColor,
+              ...(isActive ? { color: "#f1f5f9", fontWeight: 700, background: "#1e293b" } : {}),
             }}
             onClick={() => onNavigate(itemId)}
           >
@@ -901,6 +906,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const scrollingRef = useRef(false);
 
   // Media query for sidebar visibility
   useEffect(() => {
@@ -927,7 +933,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
             topId = entry.target.id;
           }
         }
-        if (topId) setActiveId(topId);
+        if (topId && !scrollingRef.current) setActiveId(topId);
       },
       { rootMargin: "-10% 0px -60% 0px", threshold: 0 },
     );
@@ -940,8 +946,11 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
   }, [showSidebar, data, dismissed]);
 
   const handleNavigate = useCallback((id: string) => {
+    setActiveId(id);
+    scrollingRef.current = true;
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => { scrollingRef.current = false; }, 1000);
   }, []);
 
   async function handleLogout() {
@@ -1010,6 +1019,7 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
           onNavigate={handleNavigate}
           noActionCount={noActionCount}
           inactiveCount={inactiveCount}
+          stageOverrides={stageOverrides}
         />
       )}
       <div style={{ ...styles.root, ...(showSidebar ? { marginLeft: 400 } : {}) }}>
