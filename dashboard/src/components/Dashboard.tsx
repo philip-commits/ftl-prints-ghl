@@ -859,6 +859,25 @@ export default function Dashboard({ initialData }: { initialData: DashboardData 
       .catch(() => {});
   }, []);
 
+  // Auto-reload when a new version is deployed
+  useEffect(() => {
+    let currentVersion: string | null = null;
+    const check = async () => {
+      try {
+        const r = await fetch("/api/version");
+        const { version } = await r.json();
+        if (currentVersion === null) {
+          currentVersion = version;
+        } else if (version !== currentVersion) {
+          window.location.reload();
+        }
+      } catch { /* ignore */ }
+    };
+    check();
+    const interval = setInterval(check, 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Poll for new dashboard data every 2 minutes
   useEffect(() => {
     const interval = setInterval(async () => {
