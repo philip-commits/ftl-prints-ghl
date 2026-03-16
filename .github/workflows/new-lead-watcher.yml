@@ -1,7 +1,7 @@
 name: New Lead Watcher
 on:
   schedule:
-    - cron: '0 13-22 * * 1-5' # 8 AM–5 PM ET (UTC-5), hourly, weekdays
+    - cron: '0 12-22 * * 1-5' # union of EDT (12-21) and EST (13-22); tz-gate filters to 8 AM–5 PM ET
   workflow_dispatch: {} # manual trigger for testing
 
 concurrency:
@@ -9,7 +9,27 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tz-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HOUR=$(TZ=America/New_York date +%-H)
+          if [ "$HOUR" -ge 8 ] && [ "$HOUR" -le 17 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   run:
+    needs: [tz-gate]
+    if: needs.tz-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:

@@ -1,11 +1,31 @@
 name: Daily Pipeline
 on:
   schedule:
-    - cron: '0 12 * * 1-5' # 7 AM ET (UTC-5), weekdays only
+    - cron: '0 11,12 * * 1-5' # 7 AM ET: 11 UTC (EDT) or 12 UTC (EST); tz-gate filters
   workflow_dispatch: {} # manual trigger button in GitHub UI
 
 jobs:
+  tz-gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          HOUR=$(TZ=America/New_York date +%H)
+          if [ "$HOUR" = "07" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
   run:
+    needs: [tz-gate]
+    if: needs.tz-gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
