@@ -286,6 +286,9 @@ export async function generateRecommendations(
       action.notes = lead.notes;
       action.international = lead.isInternational;
       action.reactivated = lead.reactivated;
+      if (lead.artwork && (lead.artwork as string[]).length > 0) {
+        action.artwork = lead.artwork as string[];
+      }
 
       // Normalize Claude's inconsistent field names — it sometimes nests
       // email fields as { subject, message } under "email" or "message"

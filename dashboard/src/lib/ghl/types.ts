@@ -123,6 +123,7 @@ export interface ActionItem {
   targetStageId?: string;
   international: boolean;
   reactivated: boolean;
+  artwork?: string[];
 }
 
 export interface NoActionItem {
