@@ -586,12 +586,74 @@ function PriorNotes({ notes }: { notes: ActionItem["notes"] }) {
   );
 }
 
+// --- Attachment Link with hover preview ---
+function AttachmentLink({ url, index }: { url: string; index: number }) {
+  const [hover, setHover] = useState(false);
+  const filename = decodeURIComponent(url.split("/").pop()?.split("?")[0] || `file-${index + 1}`);
+
+  return (
+    <div
+      style={{ position: "relative", display: "inline-flex" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+    >
+      <a
+        href={`/api/download?url=${encodeURIComponent(url)}`}
+        download={filename}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
+          background: "#0f172a",
+          border: "1px solid #334155",
+          borderRadius: 6,
+          padding: "8px 12px",
+          color: "#38bdf8",
+          fontSize: "0.8rem",
+          textDecoration: "none",
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+        </svg>
+        {filename}
+      </a>
+      {hover && (
+        <div
+          style={{
+            position: "fixed",
+            zIndex: 9999,
+            background: "#0f172a",
+            border: "1px solid #334155",
+            borderRadius: 8,
+            padding: 6,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.5)",
+            pointerEvents: "none",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+          }}
+        >
+          <img
+            src={url}
+            alt={filename}
+            style={{
+              maxWidth: 400,
+              maxHeight: 400,
+              borderRadius: 4,
+              display: "block",
+            }}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // --- Attachments ---
 function Attachments({ urls }: { urls?: string[] }) {
   const [open, setOpen] = useState(false);
   if (!urls?.length) return null;
-
-  const isImage = (url: string) => /\.(jpe?g|png|gif|webp|bmp|svg|tiff?)(\?|$)/i.test(url);
 
   return (
     <div style={{ flexBasis: "100%" }}>
@@ -610,52 +672,9 @@ function Attachments({ urls }: { urls?: string[] }) {
       </button>
       {open && (
         <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8 }}>
-          {urls.map((url, i) => {
-            const filename = decodeURIComponent(url.split("/").pop()?.split("?")[0] || `file-${i + 1}`);
-            if (isImage(url)) {
-              return (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer" title={filename}>
-                  <img
-                    src={url}
-                    alt={filename}
-                    style={{
-                      maxWidth: 180,
-                      maxHeight: 180,
-                      borderRadius: 6,
-                      border: "1px solid #334155",
-                      objectFit: "cover",
-                      cursor: "pointer",
-                    }}
-                  />
-                </a>
-              );
-            }
-            return (
-              <a
-                key={i}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  background: "#0f172a",
-                  border: "1px solid #334155",
-                  borderRadius: 6,
-                  padding: "8px 12px",
-                  color: "#38bdf8",
-                  fontSize: "0.8rem",
-                  textDecoration: "none",
-                }}
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-                </svg>
-                {filename}
-              </a>
-            );
-          })}
+          {urls.map((url, i) => (
+            <AttachmentLink key={i} url={url} index={i} />
+          ))}
         </div>
       )}
     </div>
