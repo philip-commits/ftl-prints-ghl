@@ -1,7 +1,8 @@
 name: Daily Pipeline
 on:
   schedule:
-    - cron: '0 11,12 * * 1-5' # 7 AM ET: 11 UTC (EDT) or 12 UTC (EST); tz-gate filters
+    - cron: '0 11 * * 1-5' # 7 AM EDT
+    - cron: '0 12 * * 1-5' # 7 AM EST
   workflow_dispatch: {} # manual trigger button in GitHub UI
 
 jobs:
@@ -11,13 +12,19 @@ jobs:
       run: ${{ steps.check.outputs.run }}
     steps:
       - id: check
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          HOUR=$(TZ=America/New_York date +%H)
-          if [ "$HOUR" = "07" ]; then
+          # Gate on which cron fired (github.event.schedule), not wall-clock — so GitHub's
+          # cron-dispatch delay can't push us out of the window and skip the run.
+          # EDT (-0400): 7 AM ET is 11 UTC. EST (-0500): 7 AM ET is 12 UTC.
+          OFFSET=$(TZ=America/New_York date +%z)
+          if { [ "$OFFSET" = "-0400" ] && [ "$SCHEDULE" = "0 11 * * 1-5" ]; } || \
+             { [ "$OFFSET" = "-0500" ] && [ "$SCHEDULE" = "0 12 * * 1-5" ]; }; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
