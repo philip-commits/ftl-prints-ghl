@@ -1,8 +1,8 @@
 name: Daily Pipeline
 on:
   schedule:
-    - cron: '0 11 * * 1-5' # 7 AM EDT
-    - cron: '0 12 * * 1-5' # 7 AM EST
+    - cron: '0 8 * * 1-5' # 4 AM EDT
+    - cron: '0 9 * * 1-5' # 4 AM EST
   workflow_dispatch: {} # manual trigger button in GitHub UI
 
 jobs:
@@ -21,10 +21,10 @@ jobs:
           fi
           # Gate on which cron fired (github.event.schedule), not wall-clock — so GitHub's
           # cron-dispatch delay can't push us out of the window and skip the run.
-          # EDT (-0400): 7 AM ET is 11 UTC. EST (-0500): 7 AM ET is 12 UTC.
+          # EDT (-0400): 4 AM ET is 8 UTC. EST (-0500): 4 AM ET is 9 UTC.
           OFFSET=$(TZ=America/New_York date +%z)
-          if { [ "$OFFSET" = "-0400" ] && [ "$SCHEDULE" = "0 11 * * 1-5" ]; } || \
-             { [ "$OFFSET" = "-0500" ] && [ "$SCHEDULE" = "0 12 * * 1-5" ]; }; then
+          if { [ "$OFFSET" = "-0400" ] && [ "$SCHEDULE" = "0 8 * * 1-5" ]; } || \
+             { [ "$OFFSET" = "-0500" ] && [ "$SCHEDULE" = "0 9 * * 1-5" ]; }; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
