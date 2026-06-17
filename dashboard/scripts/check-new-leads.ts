@@ -59,11 +59,20 @@ async function main() {
   if (moved > 0) console.log(`[watcher] Auto-moved ${moved} lead(s) to In Progress`);
 
   console.log("[watcher] Generating recommendations...");
-  const { actions: newActions, noAction: newNoAction } = await generateRecommendations(
+  const { actions: newActions, noAction: newNoAction, errorCount } = await generateRecommendations(
     enriched,
     inactiveSummary,
   );
-  console.log(`[watcher] ${newActions.length} actions, ${newNoAction.length} no-action`);
+  console.log(`[watcher] ${newActions.length} actions, ${newNoAction.length} no-action, ${errorCount} errors`);
+
+  // Guard: if every new lead errored, abort before merging — don't append
+  // error placeholders to the existing dashboard data or go red silently.
+  if (enriched.length > 0 && errorCount >= enriched.length) {
+    console.error(
+      `[watcher] ABORT: all ${enriched.length} new leads errored during recommendation generation — not writing dashboard data.`,
+    );
+    process.exit(1);
+  }
 
   // Step 6: Re-ID new actions starting after the existing max ID
   const maxId = existing.actions.reduce((max, a) => Math.max(max, a.id), 0);

@@ -222,9 +222,10 @@ Return JSON with either {"action": {...}} or {"noAction": {...}}`,
 export async function generateRecommendations(
   leads: EnrichedLead[],
   inactiveSummary: Record<string, number>,
-): Promise<{ actions: ActionItem[]; noAction: NoActionItem[] }> {
+): Promise<{ actions: ActionItem[]; noAction: NoActionItem[]; errorCount: number }> {
   const actions: ActionItem[] = [];
   const noAction: NoActionItem[] = [];
+  let errorCount = 0;
 
   // Process leads with concurrency limit
   const queue = [...leads];
@@ -254,6 +255,7 @@ export async function generateRecommendations(
         }
       }
       if (lastErr) {
+        errorCount++;
         console.warn(`[recommendations] Error for ${lead.name}:`, lastErr);
         results.push({
           lead,
@@ -313,5 +315,5 @@ export async function generateRecommendations(
     }
   }
 
-  return { actions, noAction };
+  return { actions, noAction, errorCount };
 }

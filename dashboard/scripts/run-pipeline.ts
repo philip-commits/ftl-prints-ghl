@@ -39,13 +39,23 @@ async function main() {
 
   // Step 4: Generate recommendations
   console.log("[pipeline] Generating recommendations...");
-  const { actions, noAction } = await generateRecommendations(
+  const { actions, noAction, errorCount } = await generateRecommendations(
     enriched,
     inactiveSummary,
   );
   console.log(
-    `[pipeline] ${actions.length} actions, ${noAction.length} no-action`,
+    `[pipeline] ${actions.length} actions, ${noAction.length} no-action, ${errorCount} errors`,
   );
+
+  // Guard: if every lead errored (e.g. retired model ID, bad API key), don't
+  // overwrite the last-good blob with empties — abort so the run goes red and
+  // the dashboard keeps showing yesterday's data instead of going blank.
+  if (enriched.length > 0 && errorCount >= enriched.length) {
+    console.error(
+      `[pipeline] ABORT: all ${enriched.length} leads errored during recommendation generation — not writing dashboard data.`,
+    );
+    process.exit(1);
+  }
 
   // Step 5: Write dashboard data
   const dashboardData = {
