@@ -244,10 +244,13 @@ export async function generateRecommendations(
           break;
         } catch (err) {
           lastErr = err;
-          const isRateLimit = err instanceof Error && (err.message.includes("429") || err.message.includes("rate_limit"));
-          if (isRateLimit && attempt < MAX_RETRIES) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const isRetryable =
+            /429|rate_limit|overloaded|529|5\d\d/.test(msg) ||
+            /premature close|ECONNRESET|ETIMEDOUT|ECONNREFUSED|socket hang up|network|fetch failed/i.test(msg);
+          if (isRetryable && attempt < MAX_RETRIES) {
             const delay = RETRY_BASE_DELAY_MS * (attempt + 1);
-            console.warn(`[recommendations] Rate limited for ${lead.name}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
+            console.warn(`[recommendations] Transient error for ${lead.name}, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})...`);
             await new Promise((r) => setTimeout(r, delay));
           } else {
             break;
