@@ -33,6 +33,7 @@ export async function writeDashboardData(data: DashboardData): Promise<void> {
   await put(DASHBOARD_KEY, JSON.stringify(data), {
     access: "public",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
@@ -50,5 +51,6 @@ export async function writeSentStatus(status: SentStatus): Promise<void> {
   await put(SENT_STATUS_KEY, JSON.stringify(status), {
     access: "public",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }

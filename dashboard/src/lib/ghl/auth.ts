@@ -26,6 +26,7 @@ async function saveTokensToBlob(tokens: TokenData): Promise<void> {
   await put(TOKEN_BLOB_KEY, JSON.stringify(tokens), {
     access: "public",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
 }
 
