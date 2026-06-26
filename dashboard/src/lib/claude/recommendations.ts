@@ -1,10 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { EnrichedLead, ActionItem, NoActionItem } from "../ghl/types";
 
-// Use Node's native fetch (undici) instead of the SDK's bundled node-fetch@2,
-// whose gzip handling throws ERR_STREAM_PREMATURE_CLOSE on api.anthropic.com
-// responses. Requires Node 18+ (CI runs on Node 24).
-const client = new Anthropic({ fetch: globalThis.fetch });
+const client = new Anthropic();
 
 const MAX_CONCURRENT = 2;
 const MAX_RETRIES = 3;
